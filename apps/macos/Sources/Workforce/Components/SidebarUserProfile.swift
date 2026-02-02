@@ -1,11 +1,12 @@
 import SwiftUI
 
 struct SidebarUserProfile: View {
+    var isCollapsed: Bool = false
     @State private var isHovered = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Avatar
+        if self.isCollapsed {
+            // Collapsed: avatar only, centered
             Circle()
                 .fill(
                     LinearGradient(
@@ -24,32 +25,55 @@ struct SidebarUserProfile: View {
                     Circle()
                         .stroke(Color.white.opacity(0.3), lineWidth: 1)
                 )
+                .frame(maxWidth: .infinity)
+        } else {
+            // Expanded: full profile row
+            HStack(spacing: 10) {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue.opacity(0.6), .purple.opacity(0.4)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 32, height: 32)
+                    .overlay(
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.white)
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
+                    )
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Workspace")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color(white: 0.2))
-                Text("Pro Plan")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color(white: 0.5))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Workspace")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color(white: 0.2))
+                    Text("Pro Plan")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color(white: 0.5))
+                }
+
+                Spacer()
+
+                Image(systemName: "gear")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color(white: 0.45))
+                    .opacity(self.isHovered ? 1 : 0.6)
             }
-
-            Spacer()
-
-            Image(systemName: "gear")
-                .font(.system(size: 13))
-                .foregroundStyle(Color(white: 0.45))
-                .opacity(self.isHovered ? 1 : 0.6)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(self.isHovered ? Color.white.opacity(0.4) : .clear)
-        )
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                self.isHovered = hovering
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(self.isHovered ? Color.white.opacity(0.4) : .clear)
+            )
+            .onHover { hovering in
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    self.isHovered = hovering
+                }
             }
         }
     }

@@ -29,14 +29,26 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
 struct SidebarView: View {
     @Binding var selection: SidebarItem?
+    @Binding var isCollapsed: Bool
+
+    private var sidebarWidth: CGFloat {
+        self.isCollapsed ? 56 : 220
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            // App branding — extra top padding for traffic light buttons
+            // App branding — tap to toggle sidebar
             self.header
-                .padding(.horizontal, 16)
+                .padding(.horizontal, self.isCollapsed ? 0 : 16)
                 .padding(.top, 28)
                 .padding(.bottom, 12)
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        self.isCollapsed.toggle()
+                    }
+                }
 
             // Navigation items
             VStack(spacing: 4) {
@@ -44,26 +56,30 @@ struct SidebarView: View {
                     SidebarNavButton(
                         icon: item.icon,
                         label: item.label,
-                        isSelected: self.selection == item
+                        isSelected: self.selection == item,
+                        isCollapsed: self.isCollapsed
                     ) {
                         self.selection = item
                     }
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, self.isCollapsed ? 8 : 12)
 
             Spacer()
 
             // User profile at bottom
-            Divider()
-                .overlay(Color.white.opacity(0.4))
-                .padding(.horizontal, 12)
+            if !self.isCollapsed {
+                Divider()
+                    .overlay(Color.white.opacity(0.4))
+                    .padding(.horizontal, 12)
+            }
 
-            SidebarUserProfile()
-                .padding(12)
+            SidebarUserProfile(isCollapsed: self.isCollapsed)
+                .padding(self.isCollapsed ? 8 : 12)
         }
-        .frame(minWidth: 200, idealWidth: 220, maxWidth: 260)
+        .frame(width: self.sidebarWidth)
         .background(Color.white.opacity(0.15))
+        .clipped()
     }
 
     private var header: some View {
@@ -79,15 +95,17 @@ struct SidebarView: View {
                 )
                 .frame(width: 28, height: 28)
                 .overlay(
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 14, weight: .semibold))
+                    Text("W")
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 )
                 .shadow(color: .blue.opacity(0.3), radius: 4, y: 2)
 
-            Text("Workforce")
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.primary)
+            if !self.isCollapsed {
+                Text("Workforce")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Color(white: 0.2))
+            }
         }
     }
 }

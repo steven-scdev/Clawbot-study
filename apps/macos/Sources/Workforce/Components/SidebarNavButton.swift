@@ -4,37 +4,59 @@ struct SidebarNavButton: View {
     let icon: String
     let label: String
     let isSelected: Bool
+    var isCollapsed: Bool = false
     let action: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
         Button(action: self.action) {
-            HStack(spacing: 10) {
+            if self.isCollapsed {
+                // Icon-only centered layout
                 Image(systemName: self.icon)
-                    .font(.system(size: 15, weight: self.isSelected ? .semibold : .regular))
+                    .font(.system(size: 16, weight: self.isSelected ? .semibold : .regular))
                     .foregroundStyle(self.isSelected ? Color.accentColor : Color(white: 0.4))
-                    .frame(width: 22)
-
-                Text(self.label)
-                    .font(.system(size: 13, weight: self.isSelected ? .medium : .regular))
-                    .foregroundStyle(self.isSelected ? Color(white: 0.15) : Color(white: 0.4))
-
-                Spacer()
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 8)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(self.backgroundColor)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(
-                        self.isSelected ? Color.white.opacity(0.4) : Color.clear,
-                        lineWidth: 0.5
+                    .frame(width: 36, height: 36)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(self.backgroundColor)
                     )
-            )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(
+                                self.isSelected ? Color.white.opacity(0.4) : Color.clear,
+                                lineWidth: 0.5
+                            )
+                    )
+                    .frame(maxWidth: .infinity)
+            } else {
+                // Full label layout
+                HStack(spacing: 10) {
+                    Image(systemName: self.icon)
+                        .font(.system(size: 15, weight: self.isSelected ? .semibold : .regular))
+                        .foregroundStyle(self.isSelected ? Color.accentColor : Color(white: 0.4))
+                        .frame(width: 22)
+
+                    Text(self.label)
+                        .font(.system(size: 13, weight: self.isSelected ? .medium : .regular))
+                        .foregroundStyle(self.isSelected ? Color(white: 0.15) : Color(white: 0.4))
+
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(self.backgroundColor)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(
+                            self.isSelected ? Color.white.opacity(0.4) : Color.clear,
+                            lineWidth: 0.5
+                        )
+                )
+            }
         }
         .buttonStyle(.plain)
         .onHover { hovering in

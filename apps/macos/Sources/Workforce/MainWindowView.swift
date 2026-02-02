@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainWindowView: View {
     @Binding var selection: SidebarItem?
+    @Binding var isSidebarCollapsed: Bool
     var gatewayService: WorkforceGatewayService
     var employeeService: EmployeeService
     var taskService: TaskService
@@ -10,26 +11,43 @@ struct MainWindowView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            SidebarView(selection: self.$selection)
+            SidebarView(
+                selection: self.$selection,
+                isCollapsed: self.$isSidebarCollapsed
+            )
 
-            // Sidebar right border
-            Rectangle()
-                .fill(Color.white.opacity(0.2))
-                .frame(width: 1)
-
-            // Detail content
-            Group {
-                if self.gatewayService.connectionState.isConnected {
-                    self.connectedDetail
-                } else {
-                    GatewayNotRunningView(
-                        state: self.gatewayService.connectionState,
-                        onRetry: {
-                            Task { await self.gatewayService.connect() }
-                        })
+            // Detail content with inner shadow from sidebar edge
+            ZStack(alignment: .leading) {
+                Group {
+                    if self.gatewayService.connectionState.isConnected {
+                        self.connectedDetail
+                    } else {
+                        GatewayNotRunningView(
+                            state: self.gatewayService.connectionState,
+                            onRetry: {
+                                Task { await self.gatewayService.connect() }
+                            })
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black.opacity(0.03))
+
+                // Inner shadow along left edge for depth separation
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.black.opacity(0.08),
+                                Color.black.opacity(0.02),
+                                Color.clear,
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: 12)
+                    .allowsHitTesting(false)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

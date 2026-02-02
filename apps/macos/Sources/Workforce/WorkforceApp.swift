@@ -6,6 +6,7 @@ import SwiftUI
 struct WorkforceApp: App {
     private static let logger = Logger(subsystem: "ai.openclaw.workforce", category: "app")
     @State private var selectedItem: SidebarItem? = .employees
+    @State private var isSidebarCollapsed = false
     @State private var gatewayService = WorkforceGatewayService.shared
     @State private var employeeService = EmployeeService.shared
     @State private var taskService = TaskService.shared
@@ -37,6 +38,7 @@ struct WorkforceApp: App {
                 VStack(spacing: 0) {
                     MainWindowView(
                         selection: self.$selectedItem,
+                        isSidebarCollapsed: self.$isSidebarCollapsed,
                         gatewayService: self.gatewayService,
                         employeeService: self.employeeService,
                         taskService: self.taskService
