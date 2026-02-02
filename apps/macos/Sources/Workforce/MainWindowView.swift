@@ -74,6 +74,12 @@ struct MainWindowView: View {
     @ViewBuilder
     private func detailView(for item: SidebarItem) -> some View {
         switch item {
+        case .dashboard:
+            ContentPlaceholderView(
+                title: "Dashboard",
+                subtitle: "Team overview and activity feed coming soon",
+                icon: "square.grid.2x2"
+            )
         case .employees:
             EmployeeGalleryView(
                 employeeService: self.employeeService,
@@ -88,8 +94,12 @@ struct MainWindowView: View {
                     Task { await self.taskService.observeTask(id: task.id) }
                     self.activeTaskId = task.id
                 })
-        case .settings:
-            SettingsView(gatewayService: self.gatewayService)
+        case .memoryBank:
+            ContentPlaceholderView(
+                title: "Memory Bank",
+                subtitle: "Shared knowledge and learned patterns coming soon",
+                icon: "brain.head.profile"
+            )
         }
     }
 }
