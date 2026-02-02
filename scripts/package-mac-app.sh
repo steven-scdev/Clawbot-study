@@ -173,6 +173,8 @@ fi
 chmod +x "$APP_ROOT/Contents/MacOS/OpenClaw"
 # SwiftPM outputs ad-hoc signed binaries; strip the signature before install_name_tool to avoid warnings.
 /usr/bin/codesign --remove-signature "$APP_ROOT/Contents/MacOS/OpenClaw" 2>/dev/null || true
+# Remove extended attributes and resource forks from the binary
+xattr -c "$APP_ROOT/Contents/MacOS/OpenClaw" 2>/dev/null || true
 
 SPARKLE_FRAMEWORK_PRIMARY="$(sparkle_framework_for_arch "$PRIMARY_ARCH")"
 if [ -d "$SPARKLE_FRAMEWORK_PRIMARY" ]; then
@@ -254,6 +256,11 @@ fi
 
 echo "⏹  Stopping any running OpenClaw"
 killall -q OpenClaw 2>/dev/null || true
+
+echo "🧹 Cleaning extended attributes before signing"
+# Remove all extended attributes and resource forks from the entire app bundle
+xattr -cr "$APP_ROOT" 2>/dev/null || true
+dot_clean -m "$APP_ROOT" 2>/dev/null || true
 
 echo "🔏 Signing bundle (auto-selects signing identity if SIGN_IDENTITY is unset)"
 "$ROOT_DIR/scripts/codesign-mac-app.sh" "$APP_ROOT"

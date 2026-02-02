@@ -190,6 +190,12 @@ APP_ENTITLEMENTS="$ENT_TMP_APP_BASE"
 
 # clear extended attributes to avoid stale signatures
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
+# Use dot_clean to remove AppleDouble files and resource forks
+dot_clean -m "$APP_BUNDLE" 2>/dev/null || true
+# Remove extended attributes from all files and directories
+find "$APP_BUNDLE" \( -type f -o -type d \) -print0 | while IFS= read -r -d '' f; do
+  xattr -c "$f" 2>/dev/null || true
+done
 
 sign_item() {
   local target="$1"
@@ -249,7 +255,8 @@ verify_team_ids() {
 
 # Sign main binary
 if [ -f "$APP_BUNDLE/Contents/MacOS/OpenClaw" ]; then
-  echo "Signing main binary"; sign_item "$APP_BUNDLE/Contents/MacOS/OpenClaw" "$APP_ENTITLEMENTS"
+  echo "Signing main binary"
+  sign_item "$APP_BUNDLE/Contents/MacOS/OpenClaw" "$APP_ENTITLEMENTS"
 fi
 
 # Sign Sparkle deeply if present
