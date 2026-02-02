@@ -13,6 +13,7 @@ let package = Package(
         .library(name: "OpenClawDiscovery", targets: ["OpenClawDiscovery"]),
         .executable(name: "OpenClaw", targets: ["OpenClaw"]),
         .executable(name: "openclaw-mac", targets: ["OpenClawMacCLI"]),
+        .executable(name: "Workforce", targets: ["Workforce"]),
     ],
     dependencies: [
         .package(url: "https://github.com/orchetect/MenuBarExtraAccess", exact: "1.2.2"),
@@ -76,6 +77,17 @@ let package = Package(
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
             ]),
+        .executableTarget(
+            name: "Workforce",
+            dependencies: [
+                .product(name: "OpenClawKit", package: "OpenClawKit"),
+                .product(name: "OpenClawProtocol", package: "OpenClawKit"),
+                .product(name: "Logging", package: "swift-log"),
+            ],
+            path: "Sources/Workforce",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]),
         .testTarget(
             name: "OpenClawIPCTests",
             dependencies: [
@@ -84,6 +96,15 @@ let package = Package(
                 "OpenClawDiscovery",
                 .product(name: "OpenClawProtocol", package: "OpenClawKit"),
                 .product(name: "SwabbleKit", package: "swabble"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency"),
+                .enableExperimentalFeature("SwiftTesting"),
+            ]),
+        .testTarget(
+            name: "WorkforceTests",
+            dependencies: [
+                "Workforce",
             ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency"),
