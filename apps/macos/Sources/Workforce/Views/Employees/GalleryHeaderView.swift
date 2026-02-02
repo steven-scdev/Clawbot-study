@@ -9,20 +9,21 @@ struct GalleryHeaderView: View {
             // Title + count
             Text("Select Employee")
                 .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color(white: 0.2))
 
             // Count badge
             Text("\(self.employeeCount) Available")
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color(white: 0.4))
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
                 .background(
                     Capsule()
-                        .fill(.white.opacity(0.15))
+                        .fill(Color.white.opacity(0.5))
                 )
                 .overlay(
                     Capsule()
-                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
                 )
 
             Spacer()
@@ -31,7 +32,7 @@ struct GalleryHeaderView: View {
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(white: 0.5))
                 TextField("Search skills...", text: self.$searchText)
                     .textFieldStyle(.plain)
                     .font(.system(size: 13))
@@ -42,7 +43,7 @@ struct GalleryHeaderView: View {
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color(white: 0.5))
                     }
                     .buttonStyle(.plain)
                 }
@@ -52,11 +53,11 @@ struct GalleryHeaderView: View {
             .frame(width: 200)
             .background(
                 Capsule()
-                    .fill(.white.opacity(0.12))
+                    .fill(Color.white.opacity(0.5))
             )
             .overlay(
                 Capsule()
-                    .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                    .stroke(Color.white.opacity(0.4), lineWidth: 0.5)
             )
 
             // Filter button
@@ -65,11 +66,11 @@ struct GalleryHeaderView: View {
             } label: {
                 Image(systemName: "slider.horizontal.3")
                     .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(white: 0.4))
                     .frame(width: 32, height: 32)
                     .background(
                         Circle()
-                            .fill(.white.opacity(0.08))
+                            .fill(Color.white.opacity(0.4))
                     )
             }
             .buttonStyle(.plain)

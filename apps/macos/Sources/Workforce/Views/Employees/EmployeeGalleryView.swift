@@ -39,7 +39,7 @@ struct EmployeeGalleryView: View {
                         )
 
                         Divider()
-                            .overlay(Color.white.opacity(0.1))
+                            .overlay(Color.white.opacity(0.5))
 
                         // Grid
                         ScrollView {
@@ -67,6 +67,7 @@ struct EmployeeGalleryView: View {
                 }
             }
         }
+        .background(Color.clear)
         .task {
             await self.employeeService.fetchEmployees()
         }

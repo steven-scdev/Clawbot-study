@@ -12,7 +12,7 @@ struct StatusBarView: View {
 
             Text(self.label)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color(white: 0.45))
 
             Spacer()
         }

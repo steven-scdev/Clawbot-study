@@ -11,19 +11,24 @@ struct GlassCard: ViewModifier {
         content
             .background(
                 RoundedRectangle(cornerRadius: self.cornerRadius)
+                    .fill(self.isActive
+                        ? Color.white.opacity(0.65)
+                        : Color.white.opacity(self.isHovered ? 0.45 : 0.35))
+            )
+            .background(
+                RoundedRectangle(cornerRadius: self.cornerRadius)
                     .fill(.ultraThinMaterial)
-                    .opacity(self.isActive ? 0.85 : 0.7)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: self.cornerRadius)
                     .stroke(
-                        Color.white.opacity(self.isHovered ? 0.5 : 0.3),
-                        lineWidth: self.isHovered ? 1.5 : 1
+                        Color.white.opacity(self.isHovered ? 0.6 : 0.4),
+                        lineWidth: 1
                     )
             )
             .shadow(
-                color: .black.opacity(self.isHovered ? 0.12 : 0.05),
-                radius: self.isHovered ? 12 : 6,
+                color: Color(red: 0.12, green: 0.15, blue: 0.53).opacity(self.isHovered ? 0.15 : 0.08),
+                radius: self.isHovered ? 16 : 8,
                 y: self.isHovered ? 6 : 3
             )
             .clipShape(RoundedRectangle(cornerRadius: self.cornerRadius))

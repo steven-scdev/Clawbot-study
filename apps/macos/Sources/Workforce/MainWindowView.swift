@@ -9,19 +9,27 @@ struct MainWindowView: View {
     @State private var activeTaskId: String?
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
             SidebarView(selection: self.$selection)
-                .toolbar(content: self.toolbarContent)
-        } detail: {
-            if self.gatewayService.connectionState.isConnected {
-                self.connectedDetail
-            } else {
-                GatewayNotRunningView(
-                    state: self.gatewayService.connectionState,
-                    onRetry: {
-                        Task { await self.gatewayService.connect() }
-                    })
+
+            // Sidebar right border
+            Rectangle()
+                .fill(Color.white.opacity(0.2))
+                .frame(width: 1)
+
+            // Detail content
+            Group {
+                if self.gatewayService.connectionState.isConnected {
+                    self.connectedDetail
+                } else {
+                    GatewayNotRunningView(
+                        state: self.gatewayService.connectionState,
+                        onRetry: {
+                            Task { await self.gatewayService.connect() }
+                        })
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
@@ -61,13 +69,6 @@ struct MainWindowView: View {
                 subtitle: "Select an item from the sidebar",
                 icon: "person.3.fill"
             )
-        }
-    }
-
-    @ToolbarContentBuilder
-    private func toolbarContent() -> some ToolbarContent {
-        ToolbarItem(placement: .automatic) {
-            ConnectionStatusView(state: self.gatewayService.connectionState)
         }
     }
 

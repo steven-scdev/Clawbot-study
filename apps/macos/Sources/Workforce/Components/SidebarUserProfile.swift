@@ -28,24 +28,24 @@ struct SidebarUserProfile: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("Workspace")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(Color(white: 0.2))
                 Text("Pro Plan")
                     .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color(white: 0.5))
             }
 
             Spacer()
 
             Image(systemName: "gear")
                 .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color(white: 0.45))
                 .opacity(self.isHovered ? 1 : 0.6)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 10)
-                .fill(self.isHovered ? Color.white.opacity(0.1) : .clear)
+                .fill(self.isHovered ? Color.white.opacity(0.4) : .clear)
         )
         .onHover { hovering in
             withAnimation(.easeInOut(duration: 0.15)) {

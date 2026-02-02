@@ -13,12 +13,12 @@ struct SidebarNavButton: View {
             HStack(spacing: 10) {
                 Image(systemName: self.icon)
                     .font(.system(size: 15, weight: self.isSelected ? .semibold : .regular))
-                    .foregroundStyle(self.isSelected ? .primary : .secondary)
+                    .foregroundStyle(self.isSelected ? Color.accentColor : Color(white: 0.4))
                     .frame(width: 22)
 
                 Text(self.label)
                     .font(.system(size: 13, weight: self.isSelected ? .medium : .regular))
-                    .foregroundStyle(self.isSelected ? .primary : .secondary)
+                    .foregroundStyle(self.isSelected ? Color(white: 0.15) : Color(white: 0.4))
 
                 Spacer()
             }
@@ -31,7 +31,7 @@ struct SidebarNavButton: View {
             .overlay(
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(
-                        self.isSelected ? Color.white.opacity(0.2) : Color.clear,
+                        self.isSelected ? Color.white.opacity(0.4) : Color.clear,
                         lineWidth: 0.5
                     )
             )
@@ -46,9 +46,9 @@ struct SidebarNavButton: View {
 
     private var backgroundColor: some ShapeStyle {
         if self.isSelected {
-            return AnyShapeStyle(.white.opacity(0.2))
+            return AnyShapeStyle(Color.white.opacity(0.6))
         } else if self.isHovered {
-            return AnyShapeStyle(.white.opacity(0.1))
+            return AnyShapeStyle(Color.white.opacity(0.4))
         } else {
             return AnyShapeStyle(.clear)
         }

@@ -13,9 +13,10 @@ struct NewAgentButton: View {
                 Text("New Agent")
                     .font(.system(size: 13, weight: .medium))
             }
-            .foregroundStyle(.primary)
+            .foregroundStyle(Color(white: 0.25))
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
+            .background(Color.white.opacity(0.45))
             .background(.ultraThinMaterial)
             .clipShape(Capsule())
             .overlay(

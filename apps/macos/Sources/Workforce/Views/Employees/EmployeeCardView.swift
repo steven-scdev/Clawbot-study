@@ -27,12 +27,12 @@ struct EmployeeCardView: View {
             // Name + title
             Text(self.employee.name)
                 .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color(white: 0.1))
                 .padding(.bottom, 2)
 
             Text(self.employee.title)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(self.isOnline ? Color.accentColor : .secondary)
+                .foregroundStyle(self.isOnline ? Color.accentColor : Color(white: 0.45))
                 .padding(.bottom, 14)
 
             // Capabilities
@@ -41,11 +41,11 @@ struct EmployeeCardView: View {
                     HStack(spacing: 8) {
                         Image(systemName: self.capabilityIcon(for: capability))
                             .font(.system(size: 13))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color(white: 0.45))
                             .frame(width: 16)
                         Text(capability)
                             .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(Color(white: 0.4))
                     }
                 }
             }
@@ -82,15 +82,15 @@ struct EmployeeCardView: View {
     private var memoryIcon: some View {
         Image(systemName: "brain.head.profile")
             .font(.system(size: 13))
-            .foregroundStyle(self.isOnline ? Color.accentColor : .secondary)
+            .foregroundStyle(self.isOnline ? Color.accentColor : Color(white: 0.5))
             .frame(width: 28, height: 28)
             .background(
                 Circle()
-                    .fill(.white.opacity(self.isOnline ? 0.15 : 0.08))
+                    .fill(Color.white.opacity(self.isOnline ? 0.5 : 0.3))
             )
             .overlay(
                 Circle()
-                    .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                    .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
             )
     }
 
@@ -173,16 +173,16 @@ struct EmployeeCardView: View {
                 .shadow(color: .blue.opacity(0.3), radius: 6, y: 2)
         } else {
             RoundedRectangle(cornerRadius: 10)
-                .fill(.white.opacity(0.12))
+                .fill(Color.white.opacity(0.5))
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
+                        .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
                 )
         }
     }
 
     private var buttonForeground: Color {
-        self.isOnline ? .white : .primary
+        self.isOnline ? .white : Color(white: 0.2)
     }
 
     // MARK: - Helpers

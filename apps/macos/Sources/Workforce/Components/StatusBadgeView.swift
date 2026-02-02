@@ -25,6 +25,7 @@ struct StatusBadgeView: View {
             Text(self.label)
                 .font(.system(size: 10, weight: .bold))
                 .tracking(0.6)
+                .foregroundStyle(self.textColor)
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
@@ -63,6 +64,15 @@ struct StatusBadgeView: View {
         case .idle: .gray.opacity(0.15)
         case .busy: .yellow.opacity(0.15)
         case .offline, .unknown: .gray.opacity(0.1)
+        }
+    }
+
+    private var textColor: Color {
+        switch self.status {
+        case .online: Color(red: 0.13, green: 0.55, blue: 0.13)
+        case .idle: Color(white: 0.4)
+        case .busy: Color(red: 0.6, green: 0.5, blue: 0.0)
+        case .offline, .unknown: Color(white: 0.5)
         }
     }
 

@@ -12,7 +12,6 @@ struct WorkforceApp: App {
 
     init() {
         Self.logger.info("Workforce app launching")
-        // Activate the app to bring windows to front
         NSApplication.shared.setActivationPolicy(.regular)
         DispatchQueue.main.async {
             NSApplication.shared.activate(ignoringOtherApps: true)
@@ -21,20 +20,53 @@ struct WorkforceApp: App {
 
     var body: some Scene {
         WindowGroup("Workforce") {
-            VStack(spacing: 0) {
-                MainWindowView(
-                    selection: self.$selectedItem,
-                    gatewayService: self.gatewayService,
-                    employeeService: self.employeeService,
-                    taskService: self.taskService
+            ZStack {
+                // Warm gradient wallpaper behind the glass shell
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.95, green: 0.91, blue: 0.84),
+                        Color(red: 0.88, green: 0.90, blue: 0.86),
+                        Color(red: 0.85, green: 0.88, blue: 0.92),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
                 )
-                StatusBarView(state: self.gatewayService.connectionState)
+                .ignoresSafeArea()
+
+                // Glass container shell
+                VStack(spacing: 0) {
+                    MainWindowView(
+                        selection: self.$selectedItem,
+                        gatewayService: self.gatewayService,
+                        employeeService: self.employeeService,
+                        taskService: self.taskService
+                    )
+                    StatusBarView(state: self.gatewayService.connectionState)
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(.ultraThinMaterial)
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(Color.white.opacity(0.55))
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(Color.white.opacity(0.5), lineWidth: 1)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 20, y: 8)
+                .padding(6)
             }
+            .background(WindowConfigurator())
             .frame(minWidth: 900, minHeight: 600)
+            .preferredColorScheme(.light)
             .task {
                 await self.gatewayService.connect()
             }
         }
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1200, height: 800)
 
         Settings {

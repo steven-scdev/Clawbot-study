@@ -32,10 +32,10 @@ struct SidebarView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // App branding
+            // App branding — extra top padding for traffic light buttons
             self.header
                 .padding(.horizontal, 16)
-                .padding(.top, 16)
+                .padding(.top, 28)
                 .padding(.bottom, 12)
 
             // Navigation items
@@ -56,14 +56,14 @@ struct SidebarView: View {
 
             // User profile at bottom
             Divider()
-                .overlay(Color.white.opacity(0.1))
+                .overlay(Color.white.opacity(0.4))
                 .padding(.horizontal, 12)
 
             SidebarUserProfile()
                 .padding(12)
         }
         .frame(minWidth: 200, idealWidth: 220, maxWidth: 260)
-        .background(.black.opacity(0.05))
+        .background(Color.white.opacity(0.15))
     }
 
     private var header: some View {
