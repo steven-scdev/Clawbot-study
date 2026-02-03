@@ -124,7 +124,6 @@ struct MainWindowView: View {
                 taskService: self.taskService,
                 onBack: {
                     self.flowState = .idle
-                    self.selection = .employees
                 })
 
         case let .clarifying(task, questions):
@@ -227,11 +226,17 @@ struct MainWindowView: View {
                 taskService: self.taskService,
                 employeeService: self.employeeService,
                 onSelectTask: { task in
-                    if task.status == .completed {
-                        self.flowState = .reviewing(taskId: task.id)
-                    } else {
+                    if let employee = self.employeeService.employee(byId: task.employeeId) {
                         Task { await self.taskService.observeTask(id: task.id) }
-                        self.flowState = .executing(taskId: task.id)
+                        self.flowState = .chatting(employee: employee, taskId: task.id)
+                    } else {
+                        // Fallback for tasks without a resolvable employee
+                        if task.status == .completed {
+                            self.flowState = .reviewing(taskId: task.id)
+                        } else {
+                            Task { await self.taskService.observeTask(id: task.id) }
+                            self.flowState = .executing(taskId: task.id)
+                        }
                     }
                 })
         case .memoryBank:

@@ -98,6 +98,7 @@ struct TaskChatView: View {
                 ChatHeaderView(
                     employee: self.employee,
                     taskDescription: self.task?.description ?? "",
+                    taskStatus: self.task?.status ?? .running,
                     onBack: self.onBack
                 )
 

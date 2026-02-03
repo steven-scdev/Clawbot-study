@@ -6,6 +6,7 @@ import SwiftUI
 struct ChatHeaderView: View {
     let employee: Employee
     let taskDescription: String
+    var taskStatus: TaskStatus = .running
     var onBack: () -> Void
 
     var body: some View {
@@ -36,12 +37,19 @@ struct ChatHeaderView: View {
 
             Spacer()
 
-            // Active session badge + task description
+            // Session badge + task description
             VStack(alignment: .trailing, spacing: 2) {
-                Text("ACTIVE SESSION")
-                    .font(.system(size: 9, weight: .bold))
-                    .tracking(1.0)
-                    .foregroundStyle(.blue)
+                if self.taskStatus == .completed {
+                    Text("COMPLETED")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1.0)
+                        .foregroundStyle(.green)
+                } else {
+                    Text("ACTIVE SESSION")
+                        .font(.system(size: 9, weight: .bold))
+                        .tracking(1.0)
+                        .foregroundStyle(.blue)
+                }
 
                 Text(self.taskDescription)
                     .font(.system(size: 11))
