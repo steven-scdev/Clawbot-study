@@ -106,6 +106,7 @@ struct TaskListResponse: Codable, Sendable {
 enum TaskFlowState: Equatable {
     case idle
     case input(employee: Employee)
+    case chatting(employee: Employee, taskId: String)
     case clarifying(task: WorkforceTask, questions: ClarificationPayload)
     case planning(task: WorkforceTask, plan: PlanPayload)
     case executing(taskId: String)
@@ -117,6 +118,8 @@ enum TaskFlowState: Equatable {
             return true
         case let (.input(a), .input(b)):
             return a.id == b.id
+        case let (.chatting(a, aId), .chatting(b, bId)):
+            return a.id == b.id && aId == bId
         case let (.clarifying(a, _), .clarifying(b, _)):
             return a.id == b.id
         case let (.planning(a, _), .planning(b, _)):

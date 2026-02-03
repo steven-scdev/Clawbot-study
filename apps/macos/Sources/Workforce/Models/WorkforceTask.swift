@@ -164,6 +164,7 @@ enum ActivityType: String, Codable, Sendable {
     case toolCall
     case toolResult
     case text
+    case userMessage
     case error
     case completion
     case unknown
@@ -179,6 +180,7 @@ enum ActivityType: String, Codable, Sendable {
         case .toolCall: "wrench.and.screwdriver"
         case .toolResult: "checkmark.rectangle"
         case .text: "text.bubble"
+        case .userMessage: "person.fill"
         case .error: "exclamationmark.triangle"
         case .completion: "checkmark.circle.fill"
         case .unknown: "circle"

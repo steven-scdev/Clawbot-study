@@ -260,106 +260,19 @@ struct TaskInputView: View {
     // MARK: - Floating Input Pill
 
     private var inputPill: some View {
-        VStack(spacing: 6) {
-            if let errorMessage = self.errorMessage {
-                Text(errorMessage)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 16)
-            }
-
-            HStack(spacing: 6) {
-                TextField("Describe a new task...", text: self.$taskDescription)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(white: 0.25))
-                    .onSubmit {
-                        Task { await self.submit() }
-                    }
-
-                Button {
-                    Task { await self.submit() }
-                } label: {
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 34, height: 34)
-                        .overlay(
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white)
-                        )
-                        .shadow(color: .blue.opacity(0.3), radius: 6, y: 3)
-                }
-                .buttonStyle(.plain)
-                .disabled(self.isSubmitDisabled)
-                .opacity(self.isSubmitDisabled ? 0.5 : 1)
-            }
-            .padding(.leading, 20)
-            .padding(.trailing, 6)
-            .padding(.vertical, 6)
-            .background(Color.white.opacity(0.7))
-            .background(.ultraThinMaterial)
-            .clipShape(Capsule())
-            .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(0.4), lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.1), radius: 16, y: 6)
-        }
-        .frame(maxWidth: 500)
-        .padding(.bottom, 24)
-    }
-
-    private var isSubmitDisabled: Bool {
-        self.taskDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || self.isSubmitting
+        ChatInputPill(
+            text: self.$taskDescription,
+            placeholder: "Describe a new task...",
+            isSubmitting: self.isSubmitting,
+            errorMessage: self.errorMessage,
+            onSubmit: self.submit
+        )
     }
 
     // MARK: - Animated Blob Background
 
     private var blobBackground: some View {
-        ZStack {
-            // Full-screen base gradient (indigo → purple → rose)
-            LinearGradient(
-                colors: [
-                    Color(red: 0.91, green: 0.89, blue: 0.97),  // lighter indigo
-                    Color(red: 0.93, green: 0.88, blue: 0.95),  // lighter purple
-                    Color(red: 0.97, green: 0.90, blue: 0.93),  // lighter rose
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // Large blue blob — upper-left area
-            Circle()
-                .fill(Color.blue.opacity(0.15))
-                .frame(width: 550, height: 550)
-                .blur(radius: 100)
-                .offset(
-                    x: -150 + self.blobPhase * 60,
-                    y: -180 - self.blobPhase * 50
-                )
-
-            // Purple blob — upper-right area
-            Circle()
-                .fill(Color.purple.opacity(0.15))
-                .frame(width: 450, height: 450)
-                .blur(radius: 100)
-                .offset(
-                    x: 180 - self.blobPhase * 40,
-                    y: -100 + self.blobPhase * 40
-                )
-
-            // Pink blob — bottom-center area
-            Circle()
-                .fill(Color.pink.opacity(0.13))
-                .frame(width: 650, height: 650)
-                .blur(radius: 100)
-                .offset(
-                    x: -30 - self.blobPhase * 20,
-                    y: 250 - self.blobPhase * 60
-                )
-        }
-        .allowsHitTesting(false)
+        BlobBackgroundView(blobPhase: self.$blobPhase)
     }
 
     // MARK: - Actions

@@ -68,6 +68,7 @@ private struct ActivityRowView: View {
         case .toolResult: .blue
         case .thinking: .purple
         case .text: .primary
+        case .userMessage: .blue
         case .unknown: .secondary
         }
     }

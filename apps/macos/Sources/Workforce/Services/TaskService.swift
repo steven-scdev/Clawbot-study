@@ -53,6 +53,17 @@ final class TaskService {
             self.tasks.insert(response.task, at: 0)
             self.logger.info("Task created: \(response.task.id) for \(employeeId)")
 
+            // Record the initial user message so it appears as a chat bubble
+            let userActivity = TaskActivity(
+                id: "user-\(UUID().uuidString.prefix(8))",
+                type: .userMessage,
+                message: description,
+                timestamp: Date()
+            )
+            if let idx = self.tasks.firstIndex(where: { $0.id == response.task.id }) {
+                self.tasks[idx].activities.append(userActivity)
+            }
+
             // Subscribe to events BEFORE starting the agent so we don't miss any
             await self.observeTask(id: response.task.id)
 
@@ -133,6 +144,28 @@ final class TaskService {
             }
         }
         self.stopObserving(taskId: id)
+    }
+
+    func sendFollowUp(taskId: String, message: String) async {
+        guard let index = self.tasks.firstIndex(where: { $0.id == taskId }) else { return }
+        let task = self.tasks[index]
+
+        // Record the user message as an activity
+        let activity = TaskActivity(
+            id: "user-\(UUID().uuidString.prefix(8))",
+            type: .userMessage,
+            message: message,
+            timestamp: Date()
+        )
+        self.tasks[index].activities.append(activity)
+
+        // If the task had completed, mark it running again
+        if self.tasks[index].status == .completed {
+            self.tasks[index].status = .running
+        }
+
+        // Continue the conversation in the same session
+        await self.startAgent(sessionKey: task.sessionKey, message: message)
     }
 
     func requestRevision(taskId: String, feedback: String) async throws -> WorkforceTask {

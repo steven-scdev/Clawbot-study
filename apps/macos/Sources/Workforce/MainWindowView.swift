@@ -111,10 +111,20 @@ struct MainWindowView: View {
                 taskService: self.taskService,
                 onTaskSubmitted: { task in
                     Task { await self.taskService.observeTask(id: task.id) }
-                    self.flowState = .executing(taskId: task.id)
+                    self.flowState = .chatting(employee: employee, taskId: task.id)
                 },
                 onCancel: {
                     self.flowState = .idle
+                })
+
+        case let .chatting(employee, taskId):
+            TaskChatView(
+                employee: employee,
+                taskId: taskId,
+                taskService: self.taskService,
+                onBack: {
+                    self.flowState = .idle
+                    self.selection = .employees
                 })
 
         case let .clarifying(task, questions):
