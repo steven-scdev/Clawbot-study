@@ -269,8 +269,10 @@ final class TaskService {
     private func handleWorkforcePush(_ push: GatewayPush) {
         guard case let .event(frame) = push else { return }
 
-        let payload = frame.payload?.value as? [String: Any] ?? [:]
-        guard let taskId = payload["taskId"] as? String else {
+        // AnyCodable stores dictionaries as [String: AnyCodable]; unwrap
+        // leaf values via .value to reach the underlying Swift types.
+        let payload = frame.payload?.value as? [String: AnyCodable] ?? [:]
+        guard let taskId = payload["taskId"]?.value as? String else {
             // Legacy event path: check for session-based routing
             self.handleLegacyPush(frame)
             return
@@ -278,24 +280,24 @@ final class TaskService {
 
         switch frame.event {
         case "workforce.task.activity":
-            if let actDict = payload["activity"] as? [String: Any] {
+            if let actDict = payload["activity"]?.value as? [String: AnyCodable] {
                 let activity = TaskActivity(
-                    id: actDict["id"] as? String ?? UUID().uuidString,
-                    type: ActivityType(rawValue: actDict["type"] as? String ?? "") ?? .unknown,
-                    message: actDict["message"] as? String ?? "",
+                    id: actDict["id"]?.value as? String ?? UUID().uuidString,
+                    type: ActivityType(rawValue: actDict["type"]?.value as? String ?? "") ?? .unknown,
+                    message: actDict["message"]?.value as? String ?? "",
                     timestamp: Date())
                 self.appendActivity(taskId: taskId, activity: activity)
             }
 
         case "workforce.task.progress":
-            if let progress = payload["progress"] as? Double,
+            if let progress = payload["progress"]?.value as? Double,
                let index = self.tasks.firstIndex(where: { $0.id == taskId })
             {
                 self.tasks[index].progress = progress
             }
 
         case "workforce.task.stage":
-            if let stageStr = payload["stage"] as? String,
+            if let stageStr = payload["stage"]?.value as? String,
                let stage = TaskStage(rawValue: stageStr),
                let index = self.tasks.firstIndex(where: { $0.id == taskId })
             {
@@ -303,14 +305,14 @@ final class TaskService {
             }
 
         case "workforce.task.output":
-            if let outDict = payload["output"] as? [String: Any] {
+            if let outDict = payload["output"]?.value as? [String: AnyCodable] {
                 let output = TaskOutput(
-                    id: outDict["id"] as? String ?? UUID().uuidString,
+                    id: outDict["id"]?.value as? String ?? UUID().uuidString,
                     taskId: taskId,
-                    type: OutputType(rawValue: outDict["type"] as? String ?? "") ?? .unknown,
-                    title: outDict["title"] as? String ?? "Output",
-                    filePath: outDict["filePath"] as? String,
-                    url: outDict["url"] as? String,
+                    type: OutputType(rawValue: outDict["type"]?.value as? String ?? "") ?? .unknown,
+                    title: outDict["title"]?.value as? String ?? "Output",
+                    filePath: outDict["filePath"]?.value as? String,
+                    url: outDict["url"]?.value as? String,
                     createdAt: Date())
                 self.taskOutputs[taskId, default: []].append(output)
                 if let index = self.tasks.firstIndex(where: { $0.id == taskId }) {
@@ -323,7 +325,7 @@ final class TaskService {
             self.stopObserving(taskId: taskId)
 
         case "workforce.task.failed":
-            if let errorMsg = payload["error"] as? String,
+            if let errorMsg = payload["error"]?.value as? String,
                let index = self.tasks.firstIndex(where: { $0.id == taskId })
             {
                 self.tasks[index].errorMessage = errorMsg
@@ -338,8 +340,8 @@ final class TaskService {
 
     /// Handle legacy chat.*/agent.* events for backward compatibility.
     private func handleLegacyPush(_ frame: EventFrame) {
-        guard let payload = frame.payload?.value as? [String: Any],
-              let sessionKey = payload["sessionKey"] as? String
+        guard let payload = frame.payload?.value as? [String: AnyCodable],
+              let sessionKey = payload["sessionKey"]?.value as? String
         else { return }
 
         guard let taskIndex = self.tasks.firstIndex(where: { $0.sessionKey == sessionKey }) else { return }
@@ -355,7 +357,7 @@ final class TaskService {
         if frame.event == "chat.complete" || frame.event == "agent.complete" {
             self.updateTaskStatus(id: taskId, status: .completed)
         } else if frame.event == "chat.error" || frame.event == "agent.error" {
-            if let message = payload["message"] as? String {
+            if let message = payload["message"]?.value as? String {
                 self.tasks[taskIndex].errorMessage = message
             }
             self.updateTaskStatus(id: taskId, status: .failed)
@@ -394,8 +396,8 @@ final class TaskService {
     }
 
     private func extractString(from payload: OpenClawProtocol.AnyCodable?, key: String) -> String? {
-        guard let dict = payload?.value as? [String: Any] else { return nil }
-        return dict[key] as? String
+        guard let dict = payload?.value as? [String: AnyCodable] else { return nil }
+        return dict[key]?.value as? String
     }
 
     // MARK: - Agent Invocation

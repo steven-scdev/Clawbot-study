@@ -65,8 +65,13 @@ struct WorkforceApp: App {
             .frame(minWidth: 900, minHeight: 600)
             .preferredColorScheme(.light)
             .task {
-                self.taskService.startGlobalListener()
+                // Establish gateway connection first so subsequent RPCs succeed
                 await self.gatewayService.connect()
+                // Prime the workforce plugin with a gateway method call so it captures broadcast
+                await self.employeeService.fetchEmployees()
+                await self.taskService.fetchTasks()
+                // Start global listener after we have a live connection
+                self.taskService.startGlobalListener()
             }
         }
         .windowStyle(.hiddenTitleBar)

@@ -52,16 +52,8 @@ struct MainWindowView: View {
                     HStack {
                         Spacer()
                         Button {
-                            // Try to open the SwiftUI Settings scene via standard selectors.
-                            NSApplication.shared.activate(ignoringOtherApps: true)
-                            let didOpen = NSApplication.shared.sendAction(NSSelectorFromString("showSettingsWindow:"), to: nil, from: nil)
-                            if !didOpen {
-                                let didOpenPrefs = NSApplication.shared.sendAction(NSSelectorFromString("showPreferencesWindow:"), to: nil, from: nil)
-                                if !didOpenPrefs {
-                                    // Fallback: present Settings content as a sheet so user can inject token
-                                    self.showSettingsSheet = true
-                                }
-                            }
+                            // Always present in-app Settings sheet to avoid reliance on menu routing.
+                            self.showSettingsSheet = true
                         } label: {
                             Label("Settings", systemImage: "gearshape")
                                 .labelStyle(.iconOnly)
@@ -75,8 +67,17 @@ struct MainWindowView: View {
             }
         }
         .sheet(isPresented: self.$showSettingsSheet) {
-            SettingsView(gatewayService: self.gatewayService)
-                .frame(width: 500, height: 400)
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    Button("Close") { self.showSettingsSheet = false }
+                        .keyboardShortcut(.cancelAction)
+                        .padding(.top, 8)
+                        .padding(.trailing, 8)
+                }
+                SettingsView(gatewayService: self.gatewayService)
+                    .frame(width: 500, height: 400)
+            }
         }
         .onChange(of: self.selection) { _, _ in
             if self.flowState != .idle {
