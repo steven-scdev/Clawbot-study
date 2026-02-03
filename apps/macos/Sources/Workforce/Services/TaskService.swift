@@ -3,6 +3,10 @@ import Logging
 import OpenClawKit
 import OpenClawProtocol
 
+/// Protocol-layer AnyCodable used by EventFrame payloads. Distinct from
+/// the OpenClawKit.AnyCodable used for building RPC request params.
+private typealias ProtoAnyCodable = OpenClawProtocol.AnyCodable
+
 /// Manages task lifecycle via the workforce plugin's gateway methods.
 /// Falls back to local-only operation when the plugin is unavailable.
 @Observable
@@ -269,9 +273,10 @@ final class TaskService {
     private func handleWorkforcePush(_ push: GatewayPush) {
         guard case let .event(frame) = push else { return }
 
-        // AnyCodable stores dictionaries as [String: AnyCodable]; unwrap
-        // leaf values via .value to reach the underlying Swift types.
-        let payload = frame.payload?.value as? [String: AnyCodable] ?? [:]
+        // EventFrame.payload is OpenClawProtocol.AnyCodable whose decoder
+        // stores dictionaries as [String: ProtoAnyCodable]. Use the
+        // protocol-layer type alias so the cast succeeds.
+        let payload = frame.payload?.value as? [String: ProtoAnyCodable] ?? [:]
         guard let taskId = payload["taskId"]?.value as? String else {
             // Legacy event path: check for session-based routing
             self.handleLegacyPush(frame)
@@ -280,7 +285,7 @@ final class TaskService {
 
         switch frame.event {
         case "workforce.task.activity":
-            if let actDict = payload["activity"]?.value as? [String: AnyCodable] {
+            if let actDict = payload["activity"]?.value as? [String: ProtoAnyCodable] {
                 let activity = TaskActivity(
                     id: actDict["id"]?.value as? String ?? UUID().uuidString,
                     type: ActivityType(rawValue: actDict["type"]?.value as? String ?? "") ?? .unknown,
@@ -305,7 +310,7 @@ final class TaskService {
             }
 
         case "workforce.task.output":
-            if let outDict = payload["output"]?.value as? [String: AnyCodable] {
+            if let outDict = payload["output"]?.value as? [String: ProtoAnyCodable] {
                 let output = TaskOutput(
                     id: outDict["id"]?.value as? String ?? UUID().uuidString,
                     taskId: taskId,
@@ -340,7 +345,7 @@ final class TaskService {
 
     /// Handle legacy chat.*/agent.* events for backward compatibility.
     private func handleLegacyPush(_ frame: EventFrame) {
-        guard let payload = frame.payload?.value as? [String: AnyCodable],
+        guard let payload = frame.payload?.value as? [String: ProtoAnyCodable],
               let sessionKey = payload["sessionKey"]?.value as? String
         else { return }
 
@@ -395,8 +400,8 @@ final class TaskService {
         }
     }
 
-    private func extractString(from payload: OpenClawProtocol.AnyCodable?, key: String) -> String? {
-        guard let dict = payload?.value as? [String: AnyCodable] else { return nil }
+    private func extractString(from payload: ProtoAnyCodable?, key: String) -> String? {
+        guard let dict = payload?.value as? [String: ProtoAnyCodable] else { return nil }
         return dict[key]?.value as? String
     }
 
