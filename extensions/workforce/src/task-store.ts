@@ -2,14 +2,36 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, readdirSync } from 
 import { join } from "node:path";
 import { homedir } from "node:os";
 
+export type TaskActivity = {
+  id: string;
+  type: "thinking" | "toolCall" | "toolResult" | "text" | "error" | "completion";
+  message: string;
+  timestamp: string;
+  detail?: string;
+};
+
+export type TaskOutput = {
+  id: string;
+  type: "file" | "website" | "document" | "image";
+  title: string;
+  filePath?: string;
+  url?: string;
+  createdAt: string;
+};
+
 export type TaskManifest = {
   id: string;
   employeeId: string;
   brief: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   stage: "clarify" | "plan" | "execute" | "review" | "deliver";
+  progress: number;
   sessionKey: string;
+  attachments: string[];
+  activities: TaskActivity[];
+  outputs: TaskOutput[];
   createdAt: string;
+  updatedAt: string;
   completedAt?: string;
   errorMessage?: string;
 };
@@ -20,6 +42,29 @@ function ensureDir() {
   if (!existsSync(STORE_DIR)) {
     mkdirSync(STORE_DIR, { recursive: true });
   }
+}
+
+export function newTaskManifest(opts: {
+  employeeId: string;
+  brief: string;
+  sessionKey: string;
+  attachments?: string[];
+}): TaskManifest {
+  const now = new Date().toISOString();
+  return {
+    id: `task-${crypto.randomUUID().slice(0, 8)}`,
+    employeeId: opts.employeeId,
+    brief: opts.brief,
+    status: "pending",
+    stage: "clarify",
+    progress: 0,
+    sessionKey: opts.sessionKey,
+    attachments: opts.attachments ?? [],
+    activities: [],
+    outputs: [],
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 export function createTask(task: TaskManifest): void {
@@ -41,7 +86,7 @@ export function updateTask(id: string, updates: Partial<TaskManifest>): TaskMani
   if (!task) {
     return null;
   }
-  const updated = { ...task, ...updates };
+  const updated = { ...task, ...updates, updatedAt: new Date().toISOString() };
   const path = join(STORE_DIR, `${id}.json`);
   writeFileSync(path, JSON.stringify(updated, null, 2));
   return updated;

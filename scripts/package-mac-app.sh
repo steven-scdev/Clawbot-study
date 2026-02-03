@@ -162,24 +162,23 @@ else
 fi
 
 echo "🚚 Copying binary"
-cp "$BIN_PRIMARY" "$APP_ROOT/Contents/MacOS/OpenClaw"
+# Use rsync with --no-perms to avoid copying extended attributes and resource forks
+rsync -a --no-perms --no-owner --no-group --no-times "$BIN_PRIMARY" "$APP_ROOT/Contents/MacOS/OpenClaw"
 if [[ "${#BUILD_ARCHS[@]}" -gt 1 ]]; then
   BIN_INPUTS=()
   for arch in "${BUILD_ARCHS[@]}"; do
     BIN_INPUTS+=("$(bin_for_arch "$arch")")
   done
-  /usr/bin/lipo -create "${BIN_INPUTS[@]}" -output "$APP_ROOT/Contents/MacOS/OpenClaw"
+  /usr/bin/lipo -create "${BIN_INPUTS[@]}" -output "$APP_ROOT/Contents/MacOS/OpenClaw.tmp"
+  mv "$APP_ROOT/Contents/MacOS/OpenClaw.tmp" "$APP_ROOT/Contents/MacOS/OpenClaw"
 fi
 chmod +x "$APP_ROOT/Contents/MacOS/OpenClaw"
-# SwiftPM outputs ad-hoc signed binaries; strip the signature before install_name_tool to avoid warnings.
-/usr/bin/codesign --remove-signature "$APP_ROOT/Contents/MacOS/OpenClaw" 2>/dev/null || true
-# Remove extended attributes and resource forks from the binary
-xattr -c "$APP_ROOT/Contents/MacOS/OpenClaw" 2>/dev/null || true
 
 SPARKLE_FRAMEWORK_PRIMARY="$(sparkle_framework_for_arch "$PRIMARY_ARCH")"
 if [ -d "$SPARKLE_FRAMEWORK_PRIMARY" ]; then
   echo "✨ Embedding Sparkle.framework"
-  cp -R "$SPARKLE_FRAMEWORK_PRIMARY" "$APP_ROOT/Contents/Frameworks/"
+  # Use ditto to copy without resource forks and extended attributes
+  ditto --norsrc --noextattr "$SPARKLE_FRAMEWORK_PRIMARY" "$APP_ROOT/Contents/Frameworks/Sparkle.framework"
   if [[ "${#BUILD_ARCHS[@]}" -gt 1 ]]; then
     OTHER_FRAMEWORKS=()
     for arch in "${BUILD_ARCHS[@]}"; do

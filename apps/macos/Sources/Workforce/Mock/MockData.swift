@@ -56,7 +56,8 @@ extension WorkforceTask {
                     id: "a3", type: .toolCall,
                     message: "Writing styles.css",
                     timestamp: Date().addingTimeInterval(-3200)),
-            ]),
+            ],
+            outputs: []),
         WorkforceTask(
             id: "task-2",
             employeeId: "sarah-research",
@@ -67,7 +68,8 @@ extension WorkforceTask {
             sessionKey: "workforce-sarah-research-def456",
             createdAt: Date().addingTimeInterval(-7200),
             completedAt: Date().addingTimeInterval(-3600),
-            activities: []),
+            activities: [],
+            outputs: []),
         WorkforceTask(
             id: "task-3",
             employeeId: "david-decks",
@@ -87,7 +89,8 @@ extension WorkforceTask {
                     id: "a5", type: .error,
                     message: "Data source not found: revenue_q4.csv",
                     timestamp: Date().addingTimeInterval(-5200)),
-            ]),
+            ],
+            outputs: []),
     ]
 }
 

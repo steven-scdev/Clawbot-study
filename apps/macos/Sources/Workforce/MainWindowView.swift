@@ -6,8 +6,7 @@ struct MainWindowView: View {
     var gatewayService: WorkforceGatewayService
     var employeeService: EmployeeService
     var taskService: TaskService
-    @State private var selectedEmployee: Employee?
-    @State private var activeTaskId: String?
+    @State private var flowState: TaskFlowState = .idle
 
     var body: some View {
         HStack(spacing: 0) {
@@ -16,7 +15,6 @@ struct MainWindowView: View {
                 isCollapsed: self.$isSidebarCollapsed
             )
 
-            // Detail content with inner shadow from sidebar edge
             ZStack(alignment: .leading) {
                 Group {
                     if self.gatewayService.connectionState.isConnected {
@@ -30,9 +28,8 @@ struct MainWindowView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(self.selectedEmployee != nil ? Color.clear : Color.black.opacity(0.03))
+                .background(self.flowState == .idle ? Color.black.opacity(0.03) : Color.clear)
 
-                // Inner shadow along left edge for depth separation
                 Rectangle()
                     .fill(
                         LinearGradient(
@@ -49,44 +46,116 @@ struct MainWindowView: View {
                     .allowsHitTesting(false)
             }
         }
-    }
-
-    private var activeTask: WorkforceTask? {
-        guard let activeTaskId else { return nil }
-        return self.taskService.tasks.first(where: { $0.id == activeTaskId })
+        .onChange(of: self.selection) { _, _ in
+            if self.flowState != .idle {
+                self.flowState = .idle
+            }
+        }
     }
 
     @ViewBuilder
     private var connectedDetail: some View {
-        if let activeTask {
-            TaskProgressView(
-                task: activeTask,
-                employee: self.employeeService.employee(byId: activeTask.employeeId),
-                taskService: self.taskService,
-                onDismiss: {
-                    self.activeTaskId = nil
-                    self.selection = .tasks
-                })
-        } else if let selectedEmployee {
+        switch self.flowState {
+        case .idle:
+            if let selection {
+                self.detailView(for: selection)
+            } else {
+                ContentPlaceholderView(
+                    title: "Workforce",
+                    subtitle: "Select an item from the sidebar",
+                    icon: "person.3.fill"
+                )
+            }
+
+        case let .input(employee):
             TaskInputView(
-                employee: selectedEmployee,
+                employee: employee,
                 taskService: self.taskService,
                 onTaskSubmitted: { task in
                     Task { await self.taskService.observeTask(id: task.id) }
-                    self.activeTaskId = task.id
-                    self.selectedEmployee = nil
+                    self.flowState = .executing(taskId: task.id)
                 },
                 onCancel: {
-                    self.selectedEmployee = nil
+                    self.flowState = .idle
                 })
-        } else if let selection {
-            self.detailView(for: selection)
-        } else {
-            ContentPlaceholderView(
-                title: "Workforce",
-                subtitle: "Select an item from the sidebar",
-                icon: "person.3.fill"
-            )
+
+        case let .clarifying(task, questions):
+            ClarificationView(
+                task: task,
+                questions: questions,
+                employee: self.employeeService.employee(byId: task.employeeId),
+                taskService: self.taskService,
+                onComplete: { updatedTask in
+                    // After clarification, move to planning or executing
+                    if updatedTask.stage == .plan {
+                        self.flowState = .executing(taskId: updatedTask.id)
+                    } else {
+                        Task { await self.taskService.observeTask(id: updatedTask.id) }
+                        self.flowState = .executing(taskId: updatedTask.id)
+                    }
+                },
+                onCancel: {
+                    Task { await self.taskService.cancelTask(id: task.id) }
+                    self.flowState = .idle
+                })
+
+        case let .planning(task, plan):
+            PlanView(
+                task: task,
+                plan: plan,
+                employee: self.employeeService.employee(byId: task.employeeId),
+                taskService: self.taskService,
+                onApproved: { updatedTask in
+                    Task { await self.taskService.observeTask(id: updatedTask.id) }
+                    self.flowState = .executing(taskId: updatedTask.id)
+                },
+                onCancel: {
+                    Task { await self.taskService.cancelTask(id: task.id) }
+                    self.flowState = .idle
+                })
+
+        case let .executing(taskId):
+            if let task = self.taskService.tasks.first(where: { $0.id == taskId }) {
+                TaskProgressView(
+                    task: task,
+                    employee: self.employeeService.employee(byId: task.employeeId),
+                    taskService: self.taskService,
+                    onDismiss: {
+                        self.flowState = .idle
+                        self.selection = .tasks
+                    },
+                    onReview: {
+                        self.flowState = .reviewing(taskId: taskId)
+                    })
+            } else {
+                ContentPlaceholderView(
+                    title: "Task Not Found",
+                    subtitle: "The task may have been removed",
+                    icon: "exclamationmark.triangle"
+                )
+            }
+
+        case let .reviewing(taskId):
+            if let task = self.taskService.tasks.first(where: { $0.id == taskId }) {
+                OutputReviewView(
+                    task: task,
+                    employee: self.employeeService.employee(byId: task.employeeId),
+                    taskService: self.taskService,
+                    onDone: {
+                        self.flowState = .idle
+                        self.selection = .tasks
+                    },
+                    onRevise: {
+                        Task { await self.taskService.observeTask(id: taskId) }
+                        self.flowState = .executing(taskId: taskId)
+                    })
+            } else {
+                ContentPlaceholderView(
+                    title: "Task Not Found",
+                    subtitle: "The task may have been removed",
+                    icon: "exclamationmark.triangle"
+                )
+            }
         }
     }
 
@@ -103,15 +172,19 @@ struct MainWindowView: View {
             EmployeeGalleryView(
                 employeeService: self.employeeService,
                 onSelect: { employee in
-                    self.selectedEmployee = employee
+                    self.flowState = .input(employee: employee)
                 })
         case .tasks:
             TaskDashboardView(
                 taskService: self.taskService,
                 employeeService: self.employeeService,
                 onSelectTask: { task in
-                    Task { await self.taskService.observeTask(id: task.id) }
-                    self.activeTaskId = task.id
+                    if task.status == .completed {
+                        self.flowState = .reviewing(taskId: task.id)
+                    } else {
+                        Task { await self.taskService.observeTask(id: task.id) }
+                        self.flowState = .executing(taskId: task.id)
+                    }
                 })
         case .memoryBank:
             ContentPlaceholderView(

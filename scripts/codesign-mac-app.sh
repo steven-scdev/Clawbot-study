@@ -256,6 +256,27 @@ verify_team_ids() {
 # Sign main binary
 if [ -f "$APP_BUNDLE/Contents/MacOS/OpenClaw" ]; then
   echo "Signing main binary"
+  # Debug: detailed attribute check
+  echo "DEBUG: Extended attributes:"
+  xattr -l "$APP_BUNDLE/Contents/MacOS/OpenClaw" 2>&1 || echo "  (none)"
+  echo "DEBUG: Resource fork check:"
+  ls -l "$APP_BUNDLE/Contents/MacOS/OpenClaw/..namedfork/rsrc" 2>&1 || echo "  (no resource fork)"
+
+  # Comprehensive cleanup
+  # 1. Remove resource fork if present
+  if [ -e "$APP_BUNDLE/Contents/MacOS/OpenClaw/..namedfork/rsrc" ]; then
+    echo "DEBUG: Removing resource fork"
+    rm -f "$APP_BUNDLE/Contents/MacOS/OpenClaw/..namedfork/rsrc" 2>/dev/null || true
+  fi
+  # 2. Remove extended attributes
+  xattr -c "$APP_BUNDLE/Contents/MacOS/OpenClaw" 2>/dev/null || true
+  # 3. Remove any AppleDouble files
+  find "$APP_BUNDLE/Contents/MacOS" -name "._OpenClaw" -delete 2>/dev/null || true
+  # 4. Use dd to create a completely clean copy
+  dd if="$APP_BUNDLE/Contents/MacOS/OpenClaw" of="$APP_BUNDLE/Contents/MacOS/OpenClaw.clean" bs=4m 2>/dev/null
+  mv "$APP_BUNDLE/Contents/MacOS/OpenClaw.clean" "$APP_BUNDLE/Contents/MacOS/OpenClaw"
+  chmod +x "$APP_BUNDLE/Contents/MacOS/OpenClaw"
+
   sign_item "$APP_BUNDLE/Contents/MacOS/OpenClaw" "$APP_ENTITLEMENTS"
 fi
 

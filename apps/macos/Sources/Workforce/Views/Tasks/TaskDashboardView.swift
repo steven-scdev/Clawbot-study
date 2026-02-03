@@ -17,6 +17,7 @@ struct TaskDashboardView: View {
             }
         }
         .navigationTitle("Tasks")
+        .task { await self.taskService.fetchTasks() }
     }
 
     private var taskList: some View {

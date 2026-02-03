@@ -5,6 +5,7 @@ struct TaskProgressView: View {
     let employee: Employee?
     var taskService: TaskService
     var onDismiss: () -> Void
+    var onReview: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -81,6 +82,16 @@ struct TaskProgressView: View {
             Button("Back") {
                 self.onDismiss()
             }
+
+            Spacer()
+
+            if self.task.status == .completed {
+                Button("Review Output") {
+                    self.onReview()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
             TaskControlsView(status: self.task.status) {
                 Task { await self.taskService.cancelTask(id: self.task.id) }
             }
