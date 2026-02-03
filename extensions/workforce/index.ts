@@ -73,6 +73,7 @@ const workforcePlugin = {
 
     // ── workforce.tasks.create ──────────────────────────────────
     api.registerGatewayMethod("workforce.tasks.create", async ({ params, respond, context }) => {
+      if (!cachedBroadcast) { cachedBroadcast = context.broadcast; }
       try {
         const employeeId = requireString(params, "employeeId");
         const brief = requireString(params, "brief");
@@ -194,6 +195,7 @@ const workforcePlugin = {
 
     // ── workforce.tasks.cancel ──────────────────────────────────
     api.registerGatewayMethod("workforce.tasks.cancel", async ({ params, respond, context }) => {
+      if (!cachedBroadcast) { cachedBroadcast = context.broadcast; }
       try {
         const taskId = requireString(params, "taskId");
         const task = getTask(taskId);
@@ -303,6 +305,8 @@ const workforcePlugin = {
       api.logger.info(`[workforce] Agent running: ${task.id}`);
       if (cachedBroadcast) {
         cachedBroadcast("workforce.task.stage", { taskId: task.id, stage: "execute" });
+      } else {
+        api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }
     });
 
@@ -324,6 +328,8 @@ const workforcePlugin = {
       if (cachedBroadcast) {
         cachedBroadcast("workforce.task.activity", { taskId: task.id, activity });
         cachedBroadcast("workforce.task.progress", { taskId: task.id, progress });
+      } else {
+        api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }
     });
 
@@ -346,6 +352,8 @@ const workforcePlugin = {
           status: "online",
           currentTaskId: null,
         });
+      } else {
+        api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }
     });
   },
