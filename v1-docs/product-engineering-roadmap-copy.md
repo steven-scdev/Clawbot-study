@@ -18,9 +18,13 @@ The Workforce app is a macOS desktop application built on OpenClaw that lets use
 
 ### The Critical Gap
 
-**The entire structured workflow exists in code but is never activated.** After a user submits a task brief, `MainWindowView.swift:114` transitions directly to `.chatting` — a freeform chat interface — bypassing clarification, plan approval, and structured output review. The backend never generates clarification questions or execution plans. Every employee behaves identically because no personality or system prompt differentiation exists.
+**The chat view is the correct primary view, but it only supports plain text bubbles.** After a user submits a task brief, `MainWindowView.swift:114` transitions to `.chatting` — this is architecturally correct. All workflow phases (clarification, planning, execution, output review) should happen inline within this chat conversation. The gap is that:
 
-The app works as a chat wrapper. It needs to work as a workforce manager.
+1. **The chat only renders 4 message types** (`user`, `assistant`, `system`, `error`) — it needs inline card components for questionnaires, plan approvals, progress milestones, and content-specific output previews
+2. **The backend never generates structured data** — no clarification questions, no execution plans, no output preview payloads
+3. **Every employee behaves identically** — no personality, system prompt, or content-type differentiation exists
+
+The app works as a text chat wrapper. It needs to work as a rich, card-based workforce conversation where each employee produces inline previews of their actual work.
 
 ### What This Document Covers
 
@@ -162,38 +166,79 @@ The app works as a chat wrapper. It needs to work as a workforce manager.
 #### Customer Need
 > "When I tell my employee to 'build me a website,' they shouldn't just start coding immediately. They should ask me targeted questions first: What's the purpose? Who's the audience? What's the style? Like a real employee would."
 
+#### Architectural Principle: Chat-Centric Workflow
+
+**All workflow phases — clarification, planning, execution, and output review — happen within the same `TaskChatView`.** The user stays in `.chatting` state throughout. Instead of routing to separate full-screen views, the chat renders different **inline card components** based on structured events from the backend:
+
+- Clarification → **Questionnaire card** appears in chat (interactive radio/checkbox/text inputs)
+- Plan → **Plan approval card** appears in chat (approve/reject buttons)
+- Execution → **Progress cards** and **milestone cards** appear in chat
+- Output → **Content-specific preview cards** appear in chat (WebView, slides, document, etc.)
+
+This means:
+- `.chatting` is the **correct and only** state for all task phases after briefing
+- The existing `ClarificationView.swift`, `PlanView.swift`, etc. are **refactored into embeddable card components** — not full-screen views
+- `TaskFlowState` no longer needs `.clarifying`, `.planning`, `.executing`, `.reviewing` as separate routing targets — the chat handles all phases through different card types
+
 #### Current State
-- `ClarificationView.swift` is **fully implemented** (217 lines) — supports single-select, multi-select, text input, and file questions with proper validation and submission
-- `TaskFlowState.clarifying(task:questions:)` exists in `TaskFlowModels.swift:110`
-- `MainWindowView.swift:129-147` handles the `.clarifying` state correctly — routes to `ClarificationView` and handles `onComplete` transition
+- `ClarificationView.swift` is **fully implemented** (217 lines) — supports single-select, multi-select, text input, and file questions. Can be adapted into an inline card component.
+- `TaskFlowState.clarifying(task:questions:)` exists in `TaskFlowModels.swift:110` — will be simplified
 - `TaskService.submitClarification()` at `TaskService.swift:94-104` sends answers to `workforce.tasks.clarify` backend method
-- Backend `workforce.tasks.clarify` at `index.ts:109-134` accepts answers, appends them to the brief, and advances stage to `plan`
-- **BUT**: Nothing ever triggers the `.clarifying` state. `MainWindowView.swift:114` goes from `.input` directly to `.chatting`. The backend `workforce.tasks.create` returns immediately without generating questions.
+- Backend `workforce.tasks.clarify` at `index.ts:109-134` accepts answers, appends them to the brief, and advances stage
+- `TaskChatView.swift:27-69` (`chatMessages`) only handles 4 activity types: `.userMessage`, `.text`, `.completion`, `.error`
+- `ChatMessage.Role` only has 4 cases: `user`, `assistant`, `system`, `error`
+- **BUT**: Nothing ever triggers clarification. The backend `workforce.tasks.create` returns immediately without generating questions. `TaskService.submitTask()` calls `startAgent()` immediately.
 
 #### Gap Analysis
-- Backend has no brief analysis logic — it doesn't examine the user's task description to determine whether clarification is needed
-- No question generation — the backend never creates `ClarificationPayload` data
-- No event or response field tells the frontend "this task needs clarification before proceeding"
-- The `TaskService.submitTask()` method at `TaskService.swift:43-92` calls `startAgent()` immediately after task creation — there's no pause for clarification
+- Backend has no brief analysis logic — never generates clarification questions
+- No question generation — backend never creates `ClarificationPayload` data
+- `TaskService.submitTask()` at `TaskService.swift:43-92` calls `startAgent()` immediately — no pause for clarification
 - No employee-specific question templates (Emma should ask about design; David should ask about data format)
+- `ChatMessage.Role` doesn't support structured card types — only text bubbles
+- `ChatBubbleView` cannot render interactive questionnaire cards
+- `TaskActivity.ActivityType` doesn't include `.clarification` type
 
 #### Frontend Work
-1. `[FE][WIRE]` `MainWindowView.swift:108-118` — Change the `.input` case so `onTaskSubmitted` checks the response for a clarification payload:
+1. `[FE][MOD]` `Components/ChatBubbleView.swift` — Extend `ChatMessage.Role` to support structured card types:
    ```swift
-   // Instead of:
-   self.flowState = .chatting(employee: employee, taskId: task.id)
-   // Do:
-   if let questions = response.clarificationPayload {
-       self.flowState = .clarifying(task: task, questions: questions)
-   } else if let plan = response.planPayload {
-       self.flowState = .planning(task: task, plan: plan)
-   } else {
-       self.flowState = .executing(taskId: task.id)
+   enum Role {
+       case user
+       case assistant
+       case system
+       case error
+       case clarification(ClarificationPayload)  // Questionnaire card
+       case plan(PlanPayload)                      // Plan approval card
+       case milestone(MilestoneData)               // Progress milestone
+       case stageTransition(from: String, to: String) // Stage change divider
+       case outputPreview(TaskOutput)              // Content-specific preview
    }
    ```
-2. `[FE][MOD]` `Models/TaskFlowModels.swift` — Extend `TaskCreateResponse` to include optional `clarificationPayload: ClarificationPayload?` and `planPayload: PlanPayload?`
-3. `[FE][MOD]` `TaskService.swift:43-92` — Do NOT call `startAgent()` in `submitTask()` if the response includes clarification questions. Only start the agent after clarification is complete (or if no clarification is needed).
-4. `[FE][MOD]` `ClarificationView.swift:136-147` (`onComplete`) — After submitting clarification, check if a plan payload comes back; transition to `.planning` if so, or `.executing` if the backend auto-proceeds
+2. `[FE][NEW]` Create `Components/Cards/ClarificationCardView.swift` — Inline questionnaire card adapted from `ClarificationView.swift`. Shows questions with radio/checkbox/text inputs and a submit button, all rendered inside the chat scroll:
+   ```swift
+   struct ClarificationCardView: View {
+       let questions: [ClarificationQuestion]
+       let onSubmit: ([String: String]) -> Void
+       @State private var isSubmitted = false
+       // After submission: becomes read-only showing answers
+   }
+   ```
+3. `[FE][MOD]` `TaskChatView.swift:107-114` — Update the `ForEach(chatMessages)` loop to render card-type messages with appropriate card components instead of `ChatBubbleView`:
+   ```swift
+   ForEach(self.chatMessages) { msg in
+       switch msg.role {
+       case .user, .assistant, .system, .error:
+           ChatBubbleView(message: msg, employeeName: self.employee.name)
+       case .clarification(let payload):
+           ClarificationCardView(questions: payload.questions, onSubmit: self.submitClarification)
+       case .plan(let payload):
+           PlanCardView(plan: payload, onApprove: ..., onReject: ...)
+       // ... other card types
+       }
+   }
+   ```
+4. `[FE][MOD]` `TaskChatView.swift:27-69` (`chatMessages` computed property) — Handle `.clarification` activity type by creating card-role `ChatMessage` entries
+5. `[FE][MOD]` `TaskService.swift:43-92` (`submitTask`) — Do NOT call `startAgent()` immediately. Let the backend decide whether clarification is needed first. If the create response indicates clarification, the backend emits a `workforce.task.clarification` event; the chat renders it as an inline questionnaire card.
+6. `[FE][MOD]` `TaskService.swift` — Add `submitClarificationAnswers(taskId:answers:)` method that sends answers and allows the backend to proceed to plan generation or execution
 
 #### Backend Work
 1. `[BE][NEW]` Create `BE/src/brief-analyzer.ts` — Analyzes the user's brief to determine if clarification is needed:
@@ -205,21 +250,22 @@ The app works as a chat wrapper. It needs to work as a workforce manager.
    - **AI-based (smarter, more dynamic)**: Short LLM call analyzing the brief to generate context-specific questions
 2. `[BE][MOD]` `index.ts:76-106` (`workforce.tasks.create`) — After creating the task, call `analyzeNeedsClarification()`. If questions are returned:
    - Set task stage to `"clarify"`
-   - Include `clarificationPayload` in the response
-   - Do NOT broadcast "start agent" — wait for clarification answers
+   - Emit `workforce.task.clarification` event with the questions payload via WebSocket
+   - Do NOT start the agent — wait for clarification answers
    If no questions needed:
-   - Set task stage to `"plan"` or `"execute"`
-   - Include `planPayload` or proceed to execution
-3. `[BE][MOD]` `index.ts:109-134` (`workforce.tasks.clarify`) — After receiving answers, either generate a plan (transition to plan stage) or proceed to execution. Broadcast `workforce.task.stage` event so frontend transitions correctly.
-4. `[BE][MOD]` `task-store.ts` — Add `clarificationPayload?: object` and `planPayload?: object` fields to `TaskManifest` so they persist across requests
+   - Proceed to plan generation (emit `workforce.task.plan` event) or execution
+3. `[BE][MOD]` `index.ts:109-134` (`workforce.tasks.clarify`) — After receiving answers, either generate a plan (emit `workforce.task.plan` event) or proceed to execution
+4. `[BE][MOD]` `event-bridge.ts` — Add new event type: `workforce.task.clarification` with structured questions payload
+5. `[BE][MOD]` `task-store.ts` — Add `clarificationPayload?: object` and `clarificationAnswers?: object` fields to `TaskManifest`
 
 #### Acceptance Criteria
-- [ ] After submitting a brief, the app shows ClarificationView (not chat) when the employee needs more info
+- [ ] After submitting a brief, an inline questionnaire card appears in the chat when the employee needs more info
 - [ ] Clarification questions are employee-specific (web-related for Emma, data-related for David)
 - [ ] Vague briefs always trigger clarification; detailed briefs may skip it
-- [ ] User can answer questions with radio buttons, checkboxes, or text fields
-- [ ] After answering, the flow proceeds to plan or execution (never back to chat)
-- [ ] If user cancels clarification, the task is cancelled cleanly
+- [ ] User answers questions directly in the chat via interactive card inputs (radio, checkbox, text)
+- [ ] After answering, the flow continues in the same chat (plan card or execution progress appears next)
+- [ ] The questionnaire card becomes read-only after submission (answers visible but not editable)
+- [ ] If user cancels/dismisses clarification, the task is cancelled cleanly
 
 ---
 
@@ -228,47 +274,70 @@ The app works as a chat wrapper. It needs to work as a workforce manager.
 ### F4: Plan Generation & Approval — P0
 
 #### Customer Need
-> "Before my employee starts working, I want to see what they plan to do. I want a clear summary, numbered steps, and an estimated time. I should be able to approve, request changes, or cancel."
+> "Before my employee starts working, I want to see what they plan to do. I want a clear summary, numbered steps, and an estimated time. I should be able to approve, request changes, or cancel — all without leaving the conversation."
+
+#### Architecture: Inline Plan Card in Chat
+
+The plan appears as an **inline approval card** within the `TaskChatView` chat scroll. When the backend generates a plan (after clarification or directly for clear briefs), it emits a `workforce.task.plan` event. The chat renders this as a structured plan card with:
+- Summary text
+- Numbered steps with estimated times
+- Approve / Request Changes / Cancel buttons
+- Optional feedback text field (shown when "Request Changes" is tapped)
+
+After the user approves, the card becomes read-only (showing "Approved" badge) and execution begins — still within the same chat view. If rejected with feedback, a new revised plan card appears below.
 
 #### Current State
-- `PlanView.swift` is **fully implemented** (194 lines) — shows summary, numbered steps with estimated times, approve/reject buttons, feedback text input
-- `TaskFlowState.planning(task:plan:)` exists in `TaskFlowModels.swift:111`
-- `MainWindowView.swift:149-162` handles `.planning` state — routes to `PlanView` with approve/cancel callbacks
+- `PlanView.swift` is **fully implemented** (194 lines) — shows summary, numbered steps with estimated times, approve/reject buttons, feedback text input. Can be adapted into an inline card component.
+- `TaskFlowState.planning(task:plan:)` exists in `TaskFlowModels.swift:111` — will be simplified
 - `TaskService.approvePlan()` at `TaskService.swift:106-119` sends approval to backend and starts the agent
 - `TaskService.rejectPlan()` at `TaskService.swift:121-131` sends feedback to backend
 - Backend `workforce.tasks.approve` at `index.ts:137-161` handles approval/rejection, updates stage
-- **BUT**: No code ever generates a plan. The backend creates a task and goes straight to execution. Nothing produces `PlanPayload` data. The `.planning` state is never entered.
+- **BUT**: No code ever generates a plan. Nothing produces `PlanPayload` data.
 
 #### Gap Analysis
 - No plan generation logic exists anywhere in the backend
-- No transition from clarification → planning (or from task creation → planning for simple briefs)
-- `PlanPayload` struct exists in Swift but no backend code ever produces the matching JSON
-- The backend `workforce.tasks.clarify` method advances stage to `"plan"` but never generates plan content
+- No transition from clarification → plan generation
+- `PlanPayload` struct exists in Swift but no backend code produces the matching JSON
+- `ChatBubbleView` cannot render a plan approval card
+- `TaskActivity.ActivityType` doesn't include a `.plan` type
 
 #### Frontend Work
-1. `[FE][WIRE]` Already handled in F3 above — the `onTaskSubmitted` and `onComplete` (from ClarificationView) handlers need to check for plan payloads and transition to `.planning`
-2. `[FE][MOD]` `TaskService.swift:106-119` (`approvePlan`) — This already works correctly (sends approval, starts agent). No changes needed if the backend generates plans properly.
-3. `[FE][MOD]` Handle the case where plan rejection returns a new plan — `PlanView.swift:180-193` calls `self.onApproved(updated)` after rejection, which should actually route back to `.planning` with the new plan, not forward to execution
+1. `[FE][NEW]` Create `Components/Cards/PlanCardView.swift` — Inline plan card adapted from `PlanView.swift`:
+   ```swift
+   struct PlanCardView: View {
+       let plan: PlanPayload
+       let onApprove: () -> Void
+       let onReject: (String) -> Void  // feedback text
+       let onCancel: () -> Void
+       @State private var isApproved = false
+       @State private var showFeedbackField = false
+       @State private var feedbackText = ""
+       // Renders: summary, numbered steps, time estimates
+       // After approval: read-only with "Approved" badge
+   }
+   ```
+2. `[FE][MOD]` `TaskChatView.swift:107-114` — Render `.plan` role messages using `PlanCardView` instead of `ChatBubbleView` (already outlined in F3 card routing logic)
+3. `[FE][MOD]` `TaskChatView.swift:27-69` (`chatMessages`) — Handle `.plan` activity type by creating a plan-role `ChatMessage`
+4. `[FE][MOD]` `TaskService.swift:106-119` (`approvePlan`) — Works correctly already. Ensure it triggers agent start and that subsequent execution events render as progress cards in the same chat.
 
 #### Backend Work
 1. `[BE][NEW]` Create `BE/src/plan-generator.ts` — Generates an execution plan from the enriched brief:
    ```typescript
    export function generatePlan(brief: string, employee: EmployeeConfig, clarifications?: object): PlanPayload
    ```
-   Two approaches:
-   - **Template-based (fast)**: Employee-specific plan templates filled with brief details (Emma's plan: research → wireframe → code → deploy; David's plan: data import → analysis → visualization → formatting)
-   - **AI-based (dynamic)**: Short LLM call to generate a structured plan from the enriched brief
-2. `[BE][MOD]` `index.ts:109-134` (`workforce.tasks.clarify`) — After receiving clarification answers, call `generatePlan()` and include the result in the response. Update task stage to `"plan"`.
-3. `[BE][MOD]` `index.ts:76-106` (`workforce.tasks.create`) — For simple briefs that skip clarification, generate a plan immediately and include it in the response.
-4. `[BE][MOD]` `index.ts:137-161` (`workforce.tasks.approve`) — On rejection with feedback, regenerate the plan with feedback incorporated and return the new plan in the response. Keep stage as `"plan"`.
+   Recommended approach: **(C) Agent-driven** — the agent generates the plan as its first action via the `before_agent_start` hook injecting a "generate a structured plan first" instruction. The plan is emitted as a structured `workforce.task.plan` event that the frontend parses into a plan card.
+2. `[BE][MOD]` `index.ts:109-134` (`workforce.tasks.clarify`) — After receiving clarification answers, generate plan and emit `workforce.task.plan` event via WebSocket
+3. `[BE][MOD]` `index.ts:76-106` (`workforce.tasks.create`) — For clear briefs that skip clarification, generate plan immediately and emit event
+4. `[BE][MOD]` `index.ts:137-161` (`workforce.tasks.approve`) — On rejection with feedback, regenerate plan and emit a new `workforce.task.plan` event. On approval, start agent execution.
 5. `[BE][MOD]` `task-store.ts:22-37` — Store the plan in `TaskManifest.planPayload` so it survives across requests
 
 #### Acceptance Criteria
-- [ ] After clarification (or immediately for clear briefs), the app shows PlanView with a structured plan
-- [ ] Plan includes summary, numbered steps, and estimated time
-- [ ] User can approve the plan — execution begins immediately
-- [ ] User can reject the plan with feedback — a revised plan is generated
-- [ ] User can cancel — task is cancelled cleanly
+- [ ] After clarification (or immediately for clear briefs), an inline plan card appears in the chat
+- [ ] Plan card shows summary, numbered steps, and estimated time
+- [ ] User can approve the plan inline — execution begins in the same chat
+- [ ] User can reject with feedback — a revised plan card appears below the original
+- [ ] User can cancel — task ends cleanly
+- [ ] Approved plan card becomes read-only with "Approved" badge
 - [ ] Plan content reflects the employee's specialty (Emma plans web work, David plans data work)
 
 ---
@@ -278,57 +347,96 @@ The app works as a chat wrapper. It needs to work as a workforce manager.
 ### F5: Rich Execution Progress — P0
 
 #### Customer Need
-> "When my employee is working, I want to see meaningful progress — not a scrolling chat log. I want to see which stage they're in (researching, building, testing), a progress bar, and key milestones. It should feel like watching a professional at work."
+> "When my employee is working, I want to see meaningful progress — not just text scrolling by. I want to see which stage they're in, what they just accomplished, and how far along they are. All within the same conversation where I gave the instructions."
+
+#### Architecture: Progress Cards & Persistent Status in Chat
+
+Execution progress renders within `TaskChatView` through four mechanisms — all inline in the chat, no navigation to separate views:
+
+1. **Persistent Progress Header** — A sticky/pinned progress indicator at the top of the chat (below the `ChatHeaderView`), showing current stage and progress percentage. Always visible during execution.
+2. **Milestone Cards** — Inline cards in the chat scroll marking significant events: "Created homepage.html", "Build passed", "Deployed to localhost:3000". Compact visual style (icon + label + timestamp), distinct from text bubbles.
+3. **Stage Transition Cards** — When the agent moves between stages (research → build → test → deploy), a visual divider card appears in the chat marking the transition.
+4. **Agent Activity Stream** — The existing `AgentThinkingStreamView` (`TaskChatView.swift:117-119`) continues showing real-time thinking/tool activity. Human-friendly labels replace raw tool names.
 
 #### Current State
-- `TaskProgressView.swift` is **fully implemented** (123 lines) — shows employee avatar, status label, `StageIndicatorView`, percentage progress bar, and `ActivityLogView`
-- `StageIndicatorView.swift` renders a visual 5-stage pipeline (clarify → plan → execute → review → deliver)
+- `TaskProgressView.swift` is **fully implemented** (123 lines) — its stage indicator, progress bar, and activity log components can be adapted for inline use
+- `StageIndicatorView.swift` renders a visual 5-stage pipeline — can be adapted into the persistent progress header
 - `ActivityLogView.swift` displays task activities with icons and timestamps
 - `ProgressBarView.swift` renders an animated progress bar
-- The `.executing` state in `MainWindowView.swift:164-183` correctly routes to `TaskProgressView`
-- **BUT**: The current flow goes to `.chatting` (TaskChatView) instead of `.executing` (TaskProgressView). The chat view shows raw streaming text as conversation bubbles — useful for debugging but not the product experience.
-- Event bridge (`event-bridge.ts:64-68`) does stage detection but uses crude text heuristics (checking for words like "plan", "implement", "review" in agent output)
-- Progress computation (`event-bridge.ts:201-206`) uses a logarithmic formula based on activity count — not meaningful task progress
+- `AgentThinkingStreamView` in `TaskChatView.swift:117-119` already shows real-time internal activities (thinking, tool calls, tool results) during execution
+- `TaskChatView.swift:121-124` shows a typing indicator when the agent is working
+- Event bridge (`event-bridge.ts:64-68`) does stage detection via text heuristics
+- Progress computation (`event-bridge.ts:201-206`) uses logarithmic formula based on activity count
+- **The chat view is already the primary execution view.** The gap is that execution progress within the chat is limited to text bubbles and the thinking stream — no milestone cards, no persistent progress bar, no stage transitions.
 
 #### Gap Analysis
-- TaskProgressView is never shown as the default during execution — TaskChatView is shown instead
-- Stage detection is unreliable (based on word matching in agent text output)
-- Progress is artificial (based on number of events, not actual completion)
-- No milestone tracking (e.g., "file created", "test passed", "deploy complete")
-- Activities shown are raw tool calls ("Using write_file") rather than human-friendly descriptions ("Creating your homepage")
+- No persistent progress indicator in `TaskChatView` (progress bar only exists in standalone `TaskProgressView`)
+- No milestone card component for the chat
+- No stage transition card/divider in the chat
+- Activity descriptions are raw tool names ("Using write_file") not human-friendly ("Creating homepage.html")
+- Stage detection via text heuristics is unreliable
+- Progress is artificial (event count, not actual plan-step completion)
+- `AgentThinkingStreamView` shows raw activities without user-friendly translation
 
 #### Frontend Work
-1. `[FE][WIRE]` `MainWindowView.swift:108-118` — Change the flow so that after task creation (and optional clarification/plan), the state goes to `.executing(taskId:)` instead of `.chatting`. TaskProgressView becomes the primary execution view.
-2. `[FE][MOD]` `TaskProgressView.swift` — Consider adding a "Show chat log" toggle/disclosure that reveals the raw chat for power users, while keeping the structured progress view as default
-3. `[FE][MOD]` `ActivityLogView.swift` — Improve activity descriptions to be user-friendly:
-   - "Using write_file" → "Creating homepage.html"
+1. `[FE][NEW]` Create `Components/Cards/MilestoneCardView.swift` — Compact inline card for milestones:
+   ```swift
+   struct MilestoneCardView: View {
+       let icon: String       // SF Symbol name
+       let label: String      // "Created homepage.html"
+       let timestamp: Date
+       // Compact: single line with icon, label, relative time
+       // Styled distinctly from chat bubbles (e.g., centered, muted color)
+   }
+   ```
+2. `[FE][NEW]` Create `Components/Cards/StageTransitionCardView.swift` — Visual divider marking stage changes:
+   ```swift
+   struct StageTransitionCardView: View {
+       let fromStage: String  // "Research"
+       let toStage: String    // "Building"
+       let timestamp: Date
+       // Renders as a horizontal divider with stage labels and arrow
+   }
+   ```
+3. `[FE][NEW]` Create `Components/ChatProgressHeaderView.swift` — Persistent sticky progress indicator pinned below `ChatHeaderView`:
+   ```swift
+   struct ChatProgressHeaderView: View {
+       let currentStage: String
+       let progress: Double       // 0.0-1.0
+       let stageSteps: [String]   // All stages for the mini pipeline
+       // Compact bar: stage label + mini progress bar + percentage
+       // Adapts StageIndicatorView into a horizontal compact form
+   }
+   ```
+4. `[FE][MOD]` `TaskChatView.swift:97-103` — Add `ChatProgressHeaderView` between `ChatHeaderView` and the `ScrollView` (only visible when task status is `.running` or `.pending`)
+5. `[FE][MOD]` `TaskChatView.swift:27-69` (`chatMessages`) — Handle `.milestone` and `.stageTransition` activity types, creating card-role `ChatMessage` entries rendered as `MilestoneCardView` and `StageTransitionCardView`
+6. `[FE][MOD]` `AgentThinkingStreamView.swift` — Translate raw tool names to human-readable descriptions:
+   - "Using write_file" → "Creating homepage.html" (extract file name from tool args)
    - "Using bash" → "Running build process"
-   - Raw thinking text → Summarized status updates
+   - "Using read_file" → "Reading project configuration"
 
 #### Backend Work
-1. `[BE][MOD]` `event-bridge.ts:116-138` (`buildToolActivity`) — Generate human-friendly activity messages:
-   ```typescript
-   // Instead of: "Using write_file"
-   // Generate: "Creating homepage.html" (using the file path from the tool call)
-   ```
-2. `[BE][MOD]` `event-bridge.ts:182-198` (`detectStageFromText`) — Replace text heuristic stage detection with tool-based detection:
-   - Research tools used → "research" stage
-   - Write/create tools used → "execute" stage
-   - Test/validate tools used → "review" stage
-   - Final output produced → "deliver" stage
+1. `[BE][MOD]` `event-bridge.ts:116-138` (`buildToolActivity`) — Generate human-friendly activity messages using file paths and tool context from the tool call arguments
+2. `[BE][MOD]` `event-bridge.ts:182-198` (`detectStageFromText`) — Replace text heuristic detection with tool-based detection:
+   - Research/read tools used → "research" stage
+   - Write/create tools used → "build" stage
+   - Test/validate tools used → "test" stage
+   - Deploy/serve tools used → "deploy" stage
 3. `[BE][MOD]` `event-bridge.ts:200-206` (`computeProgress`) — Replace logarithmic formula with plan-aware progress:
    - If a plan exists with N steps, track which step the agent is on
    - Use tool call patterns to estimate step completion
    - Fall back to current formula only if no plan exists
 4. `[BE][NEW]` Add milestone detection in `event-bridge.ts` — Emit `workforce.task.milestone` events for significant moments (file created, test passed, build complete, deploy done)
+5. `[BE][NEW]` Add stage transition events — Emit `workforce.task.stage_transition` with `fromStage` and `toStage` so the chat can render transition divider cards
 
 #### Acceptance Criteria
-- [ ] After plan approval, user sees TaskProgressView (not chat) as the default execution view
-- [ ] Stage indicator accurately reflects what the agent is doing (not just word matching)
-- [ ] Progress bar moves meaningfully (tied to plan steps, not just event count)
-- [ ] Activity log shows human-readable descriptions, not raw tool names
-- [ ] User can optionally view the raw chat log if they want to see details
-- [ ] Milestones are highlighted visually (e.g., "File created: homepage.html")
+- [ ] During execution, a persistent progress header shows current stage and percentage at the top of the chat
+- [ ] Milestone cards appear inline in the chat for significant events (file created, build passed, deployed)
+- [ ] Stage transitions are visually marked with divider cards in the chat
+- [ ] Activity descriptions are human-readable, not raw tool names
+- [ ] Progress percentage is meaningful (tied to plan steps when available)
+- [ ] User can still see agent thinking stream for detailed real-time activity
+- [ ] All progress appears within the same chat view — no navigation to separate views
 
 ---
 
@@ -380,60 +488,364 @@ The app works as a chat wrapper. It needs to work as a workforce manager.
 ### F7: Output Review & Content-Specific Previews — P0
 
 #### Customer Need
-> "When my employee finishes a website, I want to see a live preview right in the app — not just a file name. If it's a document, show me the rendered content. If it's an image, show the image. Each type of output should have an appropriate preview."
+> "When my employee finishes work, I want to see the result right there in our conversation. If Emma built a website, show me the live site. If David created a deck, show me the slides. Each employee produces different things — the app should know what to show me and how."
+
+#### Architecture: Inline Output Preview Cards in Chat
+
+When an employee completes work, an **output preview card** appears inline in the chat — rendered specifically for the content type that employee produces. This is the most critical "wow moment" of the product: the user sees the actual result embedded in their conversation.
+
+The chat view routes to the correct renderer based on the **employee's content type** (not just file extension):
+
+```swift
+// In TaskChatView's ForEach(chatMessages) routing:
+case .outputPreview(let output):
+    switch employee.contentType {
+    case .web:          WebPreviewCard(output: output)
+    case .slides:       SlideGalleryCard(output: output)
+    case .document:     DocumentPreviewCard(output: output)
+    case .imageGallery: ImageGalleryCard(output: output)   // Future
+    case .video:        VideoPlayerCard(output: output)     // Future
+    case .audio:        AudioPlayerCard(output: output)     // Future
+    case .chart:        ChartPreviewCard(output: output)    // Future
+    }
+```
+
+#### Per-Employee Output Classification Table
+
+| Employee | Role | Primary Output | Content Type | Renderer Component | Trigger Condition | V1 Scope |
+|----------|------|---------------|--------------|-------------------|-------------------|----------|
+| **Emma** | Web Developer | Website | `web` | `WebPreviewCard` | localhost URL detected or HTML files produced | **Yes** |
+| **David** | Designer | Presentation | `slides` | `SlideGalleryCard` | `.pptx`/`.key` file produced or slide images generated | **Yes** |
+| **Sarah** | Researcher | Research Report | `document` | `DocumentPreviewCard` | `.md`/`.txt`/`.pdf` file produced | **Yes** |
+| **Alex** | Writer | Written Content | `document` | `DocumentPreviewCard` | `.md`/`.txt`/`.docx` file produced | Future |
+| **Maya** | Illustrator | Images | `imageGallery` | `ImageGalleryCard` | `.png`/`.jpg`/`.svg` files produced | Future |
+| **Ryan** | Videographer | Video | `video` | `VideoPlayerCard` | `.mp4`/`.mov` file produced | Future |
+| **Luna** | Audio Producer | Audio | `audio` | `AudioPlayerCard` | `.mp3`/`.wav` file produced | Future |
+| **Marcus** | Analyst | Dashboard/Charts | `chart` | `ChartPreviewCard` | Chart data JSON or `.csv`/`.xlsx` produced | Future |
+
+**V1 implementation**: Emma (`WebPreviewCard`), David (`SlideGalleryCard`), Sarah (`DocumentPreviewCard`)
+
+#### Execution Patterns by Content Type
+
+**Type A: Streamable Work** — Emma, Sarah, Alex, Marcus
+
+Work can be previewed incrementally as the agent produces it. The output preview card appears in the chat *during* execution and updates live:
+- **Emma**: WKWebView refreshes as the website is built, showing real-time preview of the site
+- **Sarah/Alex**: Document preview updates as sections are written, rendered markdown appearing progressively
+- **Marcus**: Charts render progressively as data is processed
+
+For Type A, the output card has two states:
+1. **Live preview** (during execution) — Shows partial/updating content with a "Building..." indicator
+2. **Final preview** (after completion) — Full content with action buttons (Open, Download, Request Changes)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  🌐 Emma is building your website...                        │
+│                                                              │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │                                                        │ │
+│  │         [Live WKWebView — localhost:3000]              │ │
+│  │         Auto-refreshes as files change                 │ │
+│  │                                                        │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                              │
+│  ████████████████████░░░░░░░  65%  ~2 min remaining         │
+│                                                              │
+│  [Expand ↗]                                                  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Type B: Generation Work** — Maya, Ryan, Luna
+
+Work happens in a black box (external API call), then results appear all at once. During execution, the chat shows a branded waiting card:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  🎨 Maya is creating your images...                         │
+│                                                              │
+│  ████████████░░░░░░░░  ~30 seconds                          │
+│                                                              │
+│  Creating 4 variations based on:                             │
+│  "Modern tech aesthetic, blue gradient, bold typography"     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+When generation completes, the waiting card is replaced by the full output preview card (e.g., `ImageGalleryCard` with the 4 generated images).
+
+#### Output Renderer Specifications
+
+##### `WebPreviewCard` — V1 (Emma)
+
+**Renders**: Live website preview within the chat conversation
+
+```swift
+struct WebPreviewCard: View {
+    let output: TaskOutput           // Contains URL and metadata
+    let isLive: Bool                 // true during execution, false after completion
+    @State private var isExpanded = false
+
+    // Compact: 400×250 inline WKWebView preview with "Expand" button
+    // Expanded: near-full-width preview with URL bar
+    // Actions: "Open in Browser", "Download Files", "Request Changes"
+}
+```
+
+- **WKWebView** configured for localhost access (sandboxed, no external network)
+- Auto-refreshes during execution when file changes are detected by the backend
+- Compact mode shows a constrained preview; tap "Expand" for full-width view
+- Shows URL bar with the localhost address (e.g., `localhost:3000`)
+- **Trigger**: Backend detects `localhost:XXXX` URL in agent output or dev server start pattern
+- **Security**: See AD-4 for WKWebView sandboxing decisions
+
+##### `SlideGalleryCard` — V1 (David)
+
+**Renders**: Slide deck preview with navigation in the chat
+
+```swift
+struct SlideGalleryCard: View {
+    let slides: [SlidePreview]       // Array of slide images + metadata
+    @State private var selectedSlide = 0
+    @State private var isExpanded = false
+
+    // Large preview of selected slide (16:9 aspect ratio)
+    // Horizontal thumbnail strip below for navigation
+    // Slide counter: "Slide 3 of 12"
+    // Per-slide feedback: tap a slide to leave feedback on it
+    // Actions: "Download PPTX", "Edit Slide", "Add Slide", "Request Changes"
+}
+```
+
+- Backend generates slide preview images (PNG per slide) during deck creation
+- Thumbnail strip uses horizontal scroll for decks with many slides
+- Per-slide feedback: "Edit slide 3: Too much text, simplify to 3 bullets"
+- **Trigger**: Backend detects `.pptx`/`.key`/`.pdf` presentation file produced
+- Compact shows first slide + thumbnail count; expanded shows full gallery
+
+##### `DocumentPreviewCard` — V1 (Sarah, Alex)
+
+**Renders**: Formatted text/markdown content inline in the chat
+
+```swift
+struct DocumentPreviewCard: View {
+    let content: String              // Markdown or plain text
+    let title: String
+    let wordCount: Int
+    @State private var isExpanded = false
+
+    // Compact: first ~200 words rendered with "Read more..." button
+    // Expanded: full document with sections, headings, formatting
+    // Footer: word count, reading time
+    // Actions: "Download", "Copy to Clipboard", "Request Changes"
+}
+```
+
+- Renders markdown to `AttributedString` for rich formatting (headings, lists, bold/italic, code blocks)
+- Compact mode shows first ~200 words with "Read more..." expansion
+- Section headings, bullet lists, bold/italic all render properly
+- Word count and estimated reading time shown in footer
+- **Trigger**: Backend detects `.md`/`.txt`/`.pdf`/`.docx` file produced
+
+##### `ImageGalleryCard` — Future (Maya)
+
+**Renders**: Grid of generated images with selection
+
+```swift
+struct ImageGalleryCard: View {
+    let images: [ImageOutput]        // Array of generated images with paths/URLs
+    @State private var selectedImages: Set<String> = []
+
+    // 2×2 grid of image thumbnails (or 1×N for single images)
+    // Tap to view full-size with zoom
+    // Checkbox selection for batch operations
+    // Actions: "Download Selected", "Regenerate", "Adjust Selected"
+}
+```
+
+##### `VideoPlayerCard` — Future (Ryan)
+
+**Renders**: Video player with scene timeline
+
+```swift
+struct VideoPlayerCard: View {
+    let videoURL: URL
+    let scenes: [VideoScene]         // Scene markers with timestamps and labels
+
+    // Inline video player (AVPlayerView)
+    // Scene timeline strip below player (visual segments)
+    // Actions: "Download MP4", "Revise Scene", "Regenerate"
+}
+```
+
+##### `AudioPlayerCard` — Future (Luna)
+
+**Renders**: Audio waveform player with synchronized script
+
+```swift
+struct AudioPlayerCard: View {
+    let audioURL: URL
+    let script: [ScriptSegment]      // Timestamped script sections
+    let voiceName: String
+
+    // Waveform visualization with playback controls
+    // Synchronized script display (highlights current section during playback)
+    // Actions: "Download MP3", "Change Voice", "Edit Section"
+}
+```
+
+##### `ChartPreviewCard` — Future (Marcus)
+
+**Renders**: Interactive data dashboard
+
+```swift
+struct ChartPreviewCard: View {
+    let charts: [ChartData]
+    let summary: String
+
+    // Rendered charts (bar, line, pie) using Swift Charts framework
+    // Summary text above charts
+    // Actions: "Download CSV", "Export PDF", "Adjust Analysis"
+}
+```
+
+##### `OutputWaitingCard` — V1 (all Type B employees)
+
+**Renders**: Branded waiting experience during generation work
+
+```swift
+struct OutputWaitingCard: View {
+    let employee: Employee
+    let description: String          // "Creating 4 variations based on: ..."
+    let estimatedTime: String?       // "~30 seconds"
+
+    // Employee emoji + "{Name} is creating your {output type}..."
+    // Simple progress indicator (indeterminate or estimated)
+    // Brief description of what's being generated
+    // Replaced by the actual output card when generation completes
+}
+```
 
 #### Current State
-- `OutputReviewView.swift` is **fully implemented** (216 lines) — shows output list with type icons, "Open" and "Show in Finder" buttons, revision request form, activity log, and approval/rejection controls
-- `TaskOutput.swift` has `OutputType` enum with `file`, `website`, `document`, `image`, `unknown` and icon mappings
+- `OutputReviewView.swift` is **fully implemented** (216 lines) — shows output list with type icons, "Open"/"Show in Finder" buttons, revision input, approval controls. Components can be adapted for inline card use.
+- `TaskOutput.swift` has `OutputType` enum with `file`, `website`, `document`, `image`, `unknown`
 - `event-bridge.ts:140-171` (`detectOutput`) classifies outputs by file extension and detects localhost URLs
 - Backend `workforce.outputs.open` at `index.ts:248-272` runs `open` command; `workforce.outputs.reveal` at `index.ts:275-296` runs `open -R`
-- **BUT**: The output review only shows a list of file names with type icons. There are no inline previews. "Open" launches the file in an external app. No WebView for websites, no image preview, no document rendering.
+- **BUT**: Output review only shows file names with type icons. No inline previews, no content-type-specific rendering, no live preview during execution.
 
 #### Gap Analysis
-- No inline preview for any output type
-- No WebView for website outputs (even though localhost URLs are detected)
-- No image preview (just a file icon and "Open" button)
-- No document preview (markdown rendering, PDF display)
-- No side-by-side comparison view (brief vs. output)
-- `OutputType` classification is basic — doesn't distinguish between HTML, React, presentation, etc.
+- No inline preview for any output type — only file name lists
+- No content-type-specific card components exist
+- `ChatMessage.Role` doesn't support output preview cards
+- `TaskActivity.ActivityType` doesn't include `.outputPreview` type
+- `OutputType` classification is basic — doesn't distinguish presentations, code, audio, video
+- Event bridge detects outputs but doesn't generate preview data (thumbnails, rendered content, URLs)
+- No live preview during execution for Type A (streamable) work
+- Backend doesn't generate slide preview images or document preview content
+- `Employee` model has no `contentType` field — frontend can't determine which renderer to use
+- No `OutputWaitingCard` for Type B generation work
 
 #### Frontend Work
-1. `[FE][NEW]` Create `Views/Outputs/WebPreviewView.swift` — `WKWebView` wrapper that loads website outputs (localhost URLs) inline
-2. `[FE][NEW]` Create `Views/Outputs/ImagePreviewView.swift` — Native image display for PNG/JPG/SVG outputs with zoom
-3. `[FE][NEW]` Create `Views/Outputs/DocumentPreviewView.swift` — Markdown/text rendering for document outputs using `AttributedString` or similar
-4. `[FE][MOD]` `OutputReviewView.swift:101-146` (`outputRow`) — Replace the simple row layout with content-type specific preview cards:
+1. `[FE][NEW]` Create `Components/Cards/WebPreviewCard.swift` — WKWebView wrapper for inline website preview with compact/expanded modes (spec above)
+2. `[FE][NEW]` Create `Components/Cards/SlideGalleryCard.swift` — Slide preview with large preview + horizontal thumbnail strip + navigation (spec above)
+3. `[FE][NEW]` Create `Components/Cards/DocumentPreviewCard.swift` — Markdown/text rendering with compact/expanded modes using `AttributedString` (spec above)
+4. `[FE][NEW]` Create `Components/Cards/OutputWaitingCard.swift` — Branded waiting card for Type B generation work (spec above)
+5. `[FE][MOD]` `TaskChatView.swift:27-69` (`chatMessages`) — Handle `.outputPreview` activity type, map to appropriate card component based on the employee's `contentType`
+6. `[FE][MOD]` `TaskChatView.swift:107-114` — Render output cards using the correct renderer based on the employee:
    ```swift
-   switch output.type {
-   case .website: WebPreviewView(url: output.url)
-   case .image: ImagePreviewView(path: output.filePath)
-   case .document: DocumentPreviewView(path: output.filePath)
-   default: // current file row
+   case .outputPreview(let output):
+       switch employee.contentType {
+       case .web:      WebPreviewCard(output: output, isLive: self.isAgentWorking)
+       case .slides:   SlideGalleryCard(slides: output.slideData ?? [])
+       case .document: DocumentPreviewCard(content: output.content ?? "", title: output.label, wordCount: output.metadata?.wordCount ?? 0)
+       default:        OutputFileRow(output: output) // fallback
+       }
+   ```
+7. `[FE][MOD]` `Models/TaskOutput.swift` — Extend `OutputType` enum:
+   ```swift
+   enum OutputType: String, Codable {
+       case file, website, document, image, unknown  // existing
+       case presentation, spreadsheet, code, audio, video, chart  // new
    }
    ```
-5. `[FE][MOD]` `Models/TaskOutput.swift` — Extend `OutputType` to include `presentation`, `spreadsheet`, `code` for richer classification
-6. `[FE][MOD]` `OutputReviewView.swift` — Add a "Full Preview" mode that expands the preview to fill the entire content area
+   Add `previewData` field:
+   ```swift
+   struct TaskOutput {
+       // ...existing fields...
+       var previewData: PreviewData?
+   }
+   struct PreviewData: Codable {
+       var url: URL?           // For web previews
+       var content: String?    // For document text
+       var thumbnails: [URL]?  // For slide/image previews
+       var metadata: OutputMetadata?
+   }
+   struct OutputMetadata: Codable {
+       var width: Int?
+       var height: Int?
+       var wordCount: Int?
+       var slideCount: Int?
+       var duration: Double?   // For audio/video
+   }
+   ```
+8. `[FE][MOD]` `Models/Employee.swift` — Add `contentType` field so the frontend knows which renderer to use:
+   ```swift
+   enum ContentType: String, Codable {
+       case web, slides, document, imageGallery, video, audio, chart
+   }
+   struct Employee {
+       // ...existing fields...
+       let contentType: ContentType
+   }
+   ```
 
 #### Backend Work
-1. `[BE][MOD]` `event-bridge.ts:140-171` (`detectOutput`) — Improve output detection:
-   - Detect when a dev server is started (not just localhost URLs in text)
-   - Extract file content metadata (dimensions for images, word count for documents)
-   - Classify more precisely (`.pptx` → presentation, `.csv/.xlsx` → spreadsheet)
-2. `[BE][MOD]` `event-bridge.ts:173-178` (`classifyOutputType`) — Expand classification:
+1. `[BE][MOD]` `event-bridge.ts:140-171` (`detectOutput`) — Enhanced output detection with preview data generation:
+   - Detect dev server start (parse "Server running on localhost:XXXX" patterns) → emit output with `previewData.url`
+   - For documents: Read first N lines of content for preview → include in `previewData.content`
+   - For presentations: Track slide count and file path → include in `previewData.metadata.slideCount`
+   - Extract file metadata (dimensions for images, word count for documents)
+   - Map output to employee's expected content type for correct renderer selection
+2. `[BE][MOD]` `event-bridge.ts:173-178` (`classifyOutputType`) — Expanded classification:
    ```typescript
    if (["pptx", "ppt", "key"].includes(ext)) return "presentation";
    if (["csv", "xlsx", "xls"].includes(ext)) return "spreadsheet";
+   if (["mp4", "mov", "webm"].includes(ext)) return "video";
+   if (["mp3", "wav", "aac"].includes(ext)) return "audio";
    if (["js", "ts", "py", "swift"].includes(ext)) return "code";
    ```
-3. `[BE][MOD]` `task-store.ts:13-20` (`TaskOutput` type) — Add `metadata?: { width?: number, height?: number, wordCount?: number, previewUrl?: string }` field
-4. `[BE][NEW]` Add output thumbnail/preview generation — For file outputs, generate a small preview (first 50 lines of code, image thumbnail, etc.) and include in the output event
+3. `[BE][NEW]` Create `BE/src/preview-generator.ts` — Generates preview data for outputs:
+   ```typescript
+   export function generatePreviewData(output: TaskOutput, employee: EmployeeConfig): PreviewPayload
+   ```
+   - For websites: Returns the localhost URL for WKWebView to load
+   - For documents: Returns rendered content (first 200 words for compact, full for expanded)
+   - For presentations: Returns slide count and thumbnail file paths (generated via conversion tool)
+   - For images: Returns image paths with dimensions
+4. `[BE][MOD]` `task-store.ts:13-20` (`TaskOutput` type) — Add `previewData?: { url?: string, content?: string, thumbnails?: string[], metadata?: object }` field
+5. `[BE][MOD]` `employees.ts` — Add `contentType` to `EmployeeConfig`:
+   ```typescript
+   export type EmployeeConfig = {
+     // ...existing fields...
+     contentType: "web" | "slides" | "document" | "imageGallery" | "video" | "audio" | "chart";
+   };
+   // Emma: contentType: "web"
+   // David: contentType: "slides"
+   // Sarah: contentType: "document"
+   ```
+6. `[BE][MOD]` Emit `workforce.task.output_preview` event when outputs are detected, including `previewData` payload so the frontend can render the appropriate card immediately
+7. `[BE][MOD]` For Type A (streamable) employees, emit incremental `workforce.task.output_preview` events as the output evolves (e.g., each time Emma's dev server reloads, emit an update event so the WebPreviewCard refreshes)
 
 #### Acceptance Criteria
-- [ ] Website outputs show a live WKWebView preview within the app
-- [ ] Image outputs display inline with zoom capability
-- [ ] Document outputs render as formatted text (markdown rendered, plain text displayed)
-- [ ] Each output type has a distinct visual treatment
-- [ ] "Open in external app" still available as a secondary action
-- [ ] Preview loads without requiring the user to click anything
+- [ ] Emma's completed website shows a live WKWebView preview inline in the chat
+- [ ] Emma's WKWebView auto-refreshes during execution as the site is built (Type A live preview)
+- [ ] David's completed deck shows slide thumbnails with large preview and navigation inline in the chat
+- [ ] Sarah's completed report shows rendered markdown content inline in the chat (compact + expandable)
+- [ ] During Type A execution (Emma/Sarah), the preview card updates live as work progresses
+- [ ] During Type B execution (Maya/Ryan/Luna future), a branded `OutputWaitingCard` shows until results appear
+- [ ] Output preview cards have action buttons: Open, Download, Request Changes
+- [ ] Each preview has compact and expanded modes (tap to expand full-width)
+- [ ] Correct renderer is selected based on employee's `contentType` field, not file extension alone
+- [ ] "Open in external app" still available as secondary action on all preview cards
+- [ ] Preview appears automatically when output is detected — no user action required
 
 ---
 
@@ -708,14 +1120,14 @@ F11 (Memory Bank) ── builds on F2, can ship anytime after F2
 
 ### Recommended Build Order
 
-**Sprint 1: Connect the Flow (P0 core)**
-1. **F2 — Employee Identity** — Add system prompts and personality to employees. This is the foundation that makes everything else meaningful.
-2. **F3 — Smart Clarification** — Build brief analyzer, connect `MainWindowView` flow routing, stop going to `.chatting` state. The biggest single-point change.
-3. **F4 — Plan Generation** — Build plan generator, connect clarification → planning → execution transitions.
+**Sprint 1: Foundation + Card System (P0 core)**
+1. **F2 — Employee Identity** — Add system prompts, personality, and `contentType` field to employees. This is the foundation that makes everything else meaningful.
+2. **F3 — Smart Clarification** — Build brief analyzer, extend `ChatMessage.Role` with card types, create `ClarificationCardView`, emit `workforce.task.clarification` events. The biggest single change — it establishes the inline card pattern used by all subsequent features.
+3. **F4 — Plan Generation** — Build plan generator, create `PlanCardView`, emit `workforce.task.plan` events. Extends the card pattern established in F3.
 
-**Sprint 2: Execution & Output (P0 completeness)**
-4. **F5 — Rich Execution Progress** — Route to TaskProgressView as default, improve stage detection and activity descriptions.
-5. **F7 — Output Preview** — Build content-type specific preview views (WebView, image, document).
+**Sprint 2: Execution & Output Cards (P0 completeness)**
+4. **F5 — Rich Execution Progress** — Create `MilestoneCardView`, `StageTransitionCardView`, `ChatProgressHeaderView`. Improve stage detection and activity descriptions in the event bridge.
+5. **F7 — Output Preview** — Build content-type specific preview cards (`WebPreviewCard`, `SlideGalleryCard`, `DocumentPreviewCard`, `OutputWaitingCard`). The "wow moment" of the product.
 
 **Sprint 3: Resilience & Awareness (P1)**
 6. **F12 — Error Recovery** — Classify errors, add retry mechanism, handle disconnects.
@@ -782,7 +1194,7 @@ Website previews via WKWebView need sandboxing decisions:
 | File | Status | Notes |
 |------|--------|-------|
 | `WorkforceApp.swift` | Complete | App entry, window setup |
-| `MainWindowView.swift` | Needs F3 wiring | Line 114 is the critical bypass |
+| `MainWindowView.swift` | OK for now | Line 114 correctly routes to `.chatting` — chat is the primary view |
 | `SidebarView.swift` | Complete | 4 nav items |
 | `ContentPlaceholderView.swift` | Complete | Reusable placeholder |
 
@@ -798,7 +1210,7 @@ Website previews via WKWebView need sandboxing decisions:
 **Services**
 | File | Status | Notes |
 |------|--------|-------|
-| `Services/TaskService.swift` | Needs F3/F5 wiring | Stop auto-starting agent |
+| `Services/TaskService.swift` | Needs F3 wiring | Stop auto-starting agent; add clarification/card event handling |
 | `Services/EmployeeService.swift` | Complete | Fetch + status listener |
 | `Services/WorkforceGatewayService.swift` | Complete | WebSocket wrapper |
 | `Services/WorkforceGateway.swift` | Complete | Gateway protocol |
@@ -807,10 +1219,10 @@ Website previews via WKWebView need sandboxing decisions:
 | File | Status | Notes |
 |------|--------|-------|
 | `Views/Tasks/TaskInputView.swift` | Needs F1/F2 | Dynamic greeting + templates |
-| `Views/Tasks/TaskChatView.swift` | Complete | Will become secondary view |
-| `Views/Tasks/ClarificationView.swift` | Complete | Ready to use once wired |
-| `Views/Tasks/PlanView.swift` | Complete | Ready to use once wired |
-| `Views/Tasks/TaskProgressView.swift` | Complete | Will become primary execution view |
+| `Views/Tasks/TaskChatView.swift` | Needs F3/F4/F5/F7 | Primary view — needs inline card rendering for all phases |
+| `Views/Tasks/ClarificationView.swift` | Adapt to card | Refactor into `ClarificationCardView` for inline chat use |
+| `Views/Tasks/PlanView.swift` | Adapt to card | Refactor into `PlanCardView` for inline chat use |
+| `Views/Tasks/TaskProgressView.swift` | Adapt components | Stage indicator + progress bar adapt into `ChatProgressHeaderView` |
 | `Views/Tasks/OutputReviewView.swift` | Needs F7/F8 | Add inline previews |
 | `Views/Tasks/TaskDashboardView.swift` | Needs F9 | Non-functional buttons |
 | `Views/Tasks/TaskRowView.swift` | Complete | |
@@ -831,7 +1243,7 @@ Website previews via WKWebView need sandboxing decisions:
 | File | Status | Notes |
 |------|--------|-------|
 | `Components/ChatInputPill.swift` | Complete | |
-| `Components/ChatBubbleView.swift` | Complete | |
+| `Components/ChatBubbleView.swift` | Needs F3 | Extend Role enum for card types, add card routing |
 | `Components/ProgressBarView.swift` | Complete | |
 | `Components/BlobBackgroundView.swift` | Complete | |
 | `Components/GlassEffect.swift` | Complete | |
@@ -849,20 +1261,27 @@ Website previews via WKWebView need sandboxing decisions:
 
 | File | Status | Notes |
 |------|--------|-------|
-| `index.ts` | Needs F2/F3/F4 | Hook injection, response payloads |
-| `src/employees.ts` | Needs F2 | System prompts, personality |
-| `src/event-bridge.ts` | Needs F5 | Stage detection, progress |
-| `src/task-store.ts` | Needs F3/F4 | Store clarification/plan data |
+| `index.ts` | Needs F2/F3/F4 | Hook injection, structured event emission |
+| `src/employees.ts` | Needs F2/F7 | System prompts, personality, contentType field |
+| `src/event-bridge.ts` | Needs F5/F7 | Stage detection, milestones, output preview events |
+| `src/task-store.ts` | Needs F3/F4/F7 | Store clarification/plan/preview data |
 
 ### New Files Needed
 
 | File | Feature | Priority |
 |------|---------|----------|
+| `FE/Components/Cards/ClarificationCardView.swift` | F3 | P0 |
+| `FE/Components/Cards/PlanCardView.swift` | F4 | P0 |
+| `FE/Components/Cards/MilestoneCardView.swift` | F5 | P0 |
+| `FE/Components/Cards/StageTransitionCardView.swift` | F5 | P0 |
+| `FE/Components/ChatProgressHeaderView.swift` | F5 | P0 |
+| `FE/Components/Cards/WebPreviewCard.swift` | F7 | P0 |
+| `FE/Components/Cards/SlideGalleryCard.swift` | F7 | P0 |
+| `FE/Components/Cards/DocumentPreviewCard.swift` | F7 | P0 |
+| `FE/Components/Cards/OutputWaitingCard.swift` | F7 | P0 |
 | `BE/src/brief-analyzer.ts` | F3 | P0 |
 | `BE/src/plan-generator.ts` | F4 | P0 |
-| `FE/Views/Outputs/WebPreviewView.swift` | F7 | P0 |
-| `FE/Views/Outputs/ImagePreviewView.swift` | F7 | P0 |
-| `FE/Views/Outputs/DocumentPreviewView.swift` | F7 | P0 |
+| `BE/src/preview-generator.ts` | F7 | P0 |
 | `FE/Services/NotificationService.swift` | F6 | P1 |
 | `FE/Views/Dashboard/DashboardView.swift` | F9 | P1 |
 | `FE/Views/Tasks/TaskErrorView.swift` | F12 | P1 |
@@ -870,6 +1289,10 @@ Website previews via WKWebView need sandboxing decisions:
 | `FE/Views/Onboarding/FirstTaskGuideView.swift` | F1 | P1 |
 | `FE/Views/Outputs/RevisionAnnotationView.swift` | F8 | P1 |
 | `FE/Views/Outputs/RevisionDiffView.swift` | F8 | P1 |
+| `FE/Components/Cards/ImageGalleryCard.swift` | F7 | Future |
+| `FE/Components/Cards/VideoPlayerCard.swift` | F7 | Future |
+| `FE/Components/Cards/AudioPlayerCard.swift` | F7 | Future |
+| `FE/Components/Cards/ChartPreviewCard.swift` | F7 | Future |
 | `FE/Views/Memory/MemoryBankView.swift` | F11 | P2 |
 | `FE/Models/MemoryEntry.swift` | F11 | P2 |
 | `FE/Services/MemoryService.swift` | F11 | P2 |
