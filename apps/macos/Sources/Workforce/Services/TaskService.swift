@@ -182,7 +182,7 @@ final class TaskService {
         do {
             let response: TaskListResponse = try await self.gateway.requestDecoded(
                 method: "workforce.tasks.list")
-            self.tasks = response.tasks
+            self.mergeFetchedTasks(response.tasks)
             self.logger.info("Loaded \(response.tasks.count) tasks from gateway")
         } catch {
             self.logger.warning("workforce.tasks.list failed: \(error.localizedDescription)")
@@ -215,7 +215,18 @@ final class TaskService {
 
     func appendActivity(taskId: String, activity: TaskActivity) {
         guard let index = self.tasks.firstIndex(where: { $0.id == taskId }) else { return }
-        self.tasks[index].activities.append(activity)
+        // Coalesce streaming text: the agent sends cumulative text on every
+        // token. Update the last text activity in place instead of appending
+        // a new row for each chunk.
+        if activity.type == .text,
+           let last = self.tasks[index].activities.indices.last,
+           self.tasks[index].activities[last].type == .text
+        {
+            self.tasks[index].activities[last].message = activity.message
+            self.tasks[index].activities[last].timestamp = activity.timestamp
+        } else {
+            self.tasks[index].activities.append(activity)
+        }
     }
 
     // MARK: - Event Observation
@@ -424,9 +435,40 @@ final class TaskService {
 
     // MARK: - Private Helpers
 
+    /// Merge server-fetched tasks with locally-accumulated state (activities,
+    /// outputs, progress) so a full list refresh never wipes live event data.
+    private func mergeFetchedTasks(_ fetched: [WorkforceTask]) {
+        let local = Dictionary(self.tasks.map { ($0.id, $0) }, uniquingKeysWith: { _, b in b })
+        var seenIDs = Set<String>()
+        var merged = fetched.map { remote -> WorkforceTask in
+            seenIDs.insert(remote.id)
+            guard let existing = local[remote.id] else { return remote }
+            var task = remote
+            if !existing.activities.isEmpty { task.activities = existing.activities }
+            if !existing.outputs.isEmpty { task.outputs = existing.outputs }
+            if existing.progress > task.progress { task.progress = existing.progress }
+            if let msg = existing.errorMessage { task.errorMessage = msg }
+            return task
+        }
+        // Keep local-only tasks (fallback-created) that aren't on the server yet
+        for task in self.tasks where !seenIDs.contains(task.id) {
+            merged.append(task)
+        }
+        self.tasks = merged
+    }
+
     private func updateLocalTask(_ task: WorkforceTask) {
         if let index = self.tasks.firstIndex(where: { $0.id == task.id }) {
-            self.tasks[index] = task
+            // Preserve locally-accumulated activities/outputs the RPC response lacks
+            var merged = task
+            let existing = self.tasks[index]
+            if !existing.activities.isEmpty && merged.activities.isEmpty {
+                merged.activities = existing.activities
+            }
+            if !existing.outputs.isEmpty && merged.outputs.isEmpty {
+                merged.outputs = existing.outputs
+            }
+            self.tasks[index] = merged
         } else {
             self.tasks.insert(task, at: 0)
         }

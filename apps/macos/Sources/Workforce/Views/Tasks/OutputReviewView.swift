@@ -56,7 +56,16 @@ struct OutputReviewView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                if self.task.outputs.isEmpty {
+                if !self.task.outputs.isEmpty {
+                    ForEach(self.task.outputs) { output in
+                        self.outputRow(output)
+                    }
+                }
+
+                if !self.task.activities.isEmpty {
+                    ActivityLogView(activities: self.task.activities)
+                        .frame(maxHeight: 300)
+                } else if self.task.outputs.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "doc.text")
                             .font(.system(size: 32))
@@ -67,10 +76,6 @@ struct OutputReviewView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
-                } else {
-                    ForEach(self.task.outputs) { output in
-                        self.outputRow(output)
-                    }
                 }
 
                 if self.showRevisionInput {
