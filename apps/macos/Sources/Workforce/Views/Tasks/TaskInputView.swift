@@ -57,16 +57,15 @@ struct TaskInputView: View {
             VStack(spacing: 0) {
                 self.header
 
-                // Scrollable content
-                ScrollView {
-                    VStack(spacing: 32) {
-                        self.greeting
-                            .padding(.top, 48)
+                Spacer()
 
-                        self.templateGrid
-                    }
-                    .padding(.bottom, 120)
+                VStack(spacing: 32) {
+                    self.greeting
+                    self.templateGrid
                 }
+                .offset(y: -30)
+
+                Spacer()
             }
 
             // Floating input pill at bottom
