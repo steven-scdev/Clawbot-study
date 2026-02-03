@@ -51,6 +51,11 @@ struct MainWindowView: View {
                 self.flowState = .idle
             }
         }
+        .onChange(of: self.activeTaskStatus) { _, newStatus in
+            if case let .executing(taskId) = self.flowState, newStatus == .completed {
+                self.flowState = .reviewing(taskId: taskId)
+            }
+        }
     }
 
     @ViewBuilder
@@ -193,5 +198,10 @@ struct MainWindowView: View {
                 icon: "brain.head.profile"
             )
         }
+    }
+
+    private var activeTaskStatus: TaskStatus? {
+        guard case let .executing(taskId) = self.flowState else { return nil }
+        return self.taskService.tasks.first(where: { $0.id == taskId })?.status
     }
 }

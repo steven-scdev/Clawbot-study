@@ -91,10 +91,32 @@ final class WorkforceGatewayService {
     }
 
     private func loadConfig() -> (url: URL, token: String?, password: String?) {
-        let port = UserDefaults.standard.integer(forKey: "workforceGatewayPort")
-        let effectivePort = port > 0 ? port : 18789
-        let url = URL(string: "ws://127.0.0.1:\(effectivePort)/ws")!
-        let token = UserDefaults.standard.string(forKey: "workforceGatewayToken")
-        return (url, token, nil)
+        // Read from ~/.openclaw/openclaw.json (the canonical gateway config)
+        let (filePort, fileToken) = Self.readOpenClawConfig()
+
+        // UserDefaults overrides let advanced users point at a different gateway
+        let udPort = UserDefaults.standard.integer(forKey: "workforceGatewayPort")
+        let udToken = UserDefaults.standard.string(forKey: "workforceGatewayToken")
+
+        let effectivePort = udPort > 0 ? udPort : (filePort ?? 18789)
+        let effectiveToken = udToken ?? fileToken
+
+        // Connect to root WebSocket endpoint (gateway handles all paths)
+        let url = URL(string: "ws://127.0.0.1:\(effectivePort)")!
+        return (url, effectiveToken, nil)
+    }
+
+    /// Parse `~/.openclaw/openclaw.json` for `gateway.port` and `gateway.auth.token`.
+    private static func readOpenClawConfig() -> (port: Int?, token: String?) {
+        let configURL = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".openclaw/openclaw.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let gateway = root["gateway"] as? [String: Any]
+        else { return (nil, nil) }
+
+        let port = gateway["port"] as? Int
+        let token = (gateway["auth"] as? [String: Any])?["token"] as? String
+        return (port, token)
     }
 }
