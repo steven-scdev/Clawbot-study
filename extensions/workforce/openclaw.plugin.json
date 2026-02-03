@@ -1,0 +1,32 @@
+{
+  "id": "workforce",
+  "name": "Workforce",
+  "description": "AI employee management: task creation, employee roster, and structured task lifecycle",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "employees": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" },
+            "title": { "type": "string" },
+            "emoji": { "type": "string" },
+            "description": { "type": "string" },
+            "agentId": { "type": "string" },
+            "capabilities": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "avatarSystemName": { "type": "string" }
+          },
+          "required": ["id", "name", "title", "emoji", "description", "agentId", "capabilities"]
+        }
+      }
+    }
+  }
+}

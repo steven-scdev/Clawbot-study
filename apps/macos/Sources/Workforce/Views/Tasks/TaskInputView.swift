@@ -306,7 +306,7 @@ struct TaskInputView: View {
             )
             .shadow(color: .black.opacity(0.1), radius: 16, y: 6)
         }
-        .frame(maxWidth: 420)
+        .frame(maxWidth: 500)
         .padding(.bottom, 24)
     }
 

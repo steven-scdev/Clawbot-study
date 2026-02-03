@@ -12,12 +12,24 @@ struct EmployeeServiceTests {
         #expect(!service.isLoading)
     }
 
-    @Test("fetchEmployees returns mock data")
+    @Test("fetchEmployees falls back to mock data when gateway unavailable")
     @MainActor
-    func fetch() async {
+    func fetchFallback() async {
         let service = EmployeeService()
         service.employees = []
         await service.fetchEmployees()
+        #expect(service.employees.count == 3)
+        #expect(!service.isLoading)
+    }
+
+    @Test("fetchEmployees preserves existing data when gateway unavailable and list not empty")
+    @MainActor
+    func fetchPreservesExisting() async {
+        let service = EmployeeService()
+        // Already has 3 mock employees
+        #expect(service.employees.count == 3)
+        await service.fetchEmployees()
+        // Should keep existing data (not reset to empty)
         #expect(service.employees.count == 3)
         #expect(!service.isLoading)
     }
@@ -37,5 +49,14 @@ struct EmployeeServiceTests {
         let service = EmployeeService()
         let missing = service.employee(byId: "nonexistent")
         #expect(missing == nil)
+    }
+
+    @Test("mock employees have nil currentTaskId by default")
+    @MainActor
+    func currentTaskIdDefault() {
+        let service = EmployeeService()
+        for employee in service.employees {
+            #expect(employee.currentTaskId == nil)
+        }
     }
 }

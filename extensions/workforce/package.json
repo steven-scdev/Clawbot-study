@@ -1,0 +1,14 @@
+{
+  "name": "@openclaw/workforce",
+  "version": "2026.2.2",
+  "description": "Workforce AI employee management plugin",
+  "type": "module",
+  "devDependencies": {
+    "openclaw": "workspace:*"
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

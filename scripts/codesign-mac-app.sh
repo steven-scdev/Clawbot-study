@@ -287,6 +287,13 @@ if [ -d "$APP_BUNDLE/Contents/Frameworks" ]; then
   done
 fi
 
+# Final cleanup before signing the bundle itself
+echo "Final cleanup before bundle signing"
+xattr -cr "$APP_BUNDLE" 2>/dev/null || true
+dot_clean -m "$APP_BUNDLE" 2>/dev/null || true
+# Specifically clean the .app directory itself
+xattr -c "$APP_BUNDLE" 2>/dev/null || true
+
 # Finally sign the bundle
 sign_item "$APP_BUNDLE" "$APP_ENTITLEMENTS"
 
