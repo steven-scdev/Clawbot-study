@@ -8,6 +8,7 @@ import {
   getTaskBySessionKey,
   type TaskManifest,
 } from "./src/task-store.js";
+import { handleAgentEvent } from "./src/event-bridge.js";
 
 type GatewayMethodOpts = {
   params: Record<string, unknown>;
@@ -354,6 +355,27 @@ const workforcePlugin = {
         });
       } else {
         api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
+      }
+    });
+
+    // Handle streaming agent events in real-time
+    api.on("agent_stream", async (event, ctx) => {
+      const sessionKey = ctx.sessionKey as string | undefined;
+      api.logger.debug(`[workforce] agent_stream: sessionKey=${sessionKey} stream=${event.stream} event=${event.event} hasBroadcast=${!!cachedBroadcast}`);
+      if (!sessionKey?.startsWith("workforce-")) { return; }
+
+      if (cachedBroadcast) {
+        handleAgentEvent(
+          {
+            sessionKey,
+            stream: event.stream as string,
+            event: event.event as string | undefined,
+            data: event.data as Record<string, unknown> | undefined,
+          },
+          cachedBroadcast
+        );
+      } else {
+        api.logger.warn(`[workforce] agent_stream hook called but no broadcast available (sessionKey=${sessionKey})`);
       }
     });
   },

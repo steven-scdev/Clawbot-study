@@ -286,6 +286,7 @@ export type PluginDiagnostic = {
 
 export type PluginHookName =
   | "before_agent_start"
+  | "agent_stream"
   | "agent_end"
   | "before_compaction"
   | "after_compaction"
@@ -317,6 +318,13 @@ export type PluginHookBeforeAgentStartEvent = {
 export type PluginHookBeforeAgentStartResult = {
   systemPrompt?: string;
   prependContext?: string;
+};
+
+// agent_stream hook
+export type PluginHookAgentStreamEvent = {
+  stream: "thinking" | "assistant" | "tool" | "lifecycle";
+  event?: string;
+  data?: Record<string, unknown>;
 };
 
 // agent_end hook
@@ -467,6 +475,10 @@ export type PluginHookHandlerMap = {
     ctx: PluginHookAgentContext,
   ) => Promise<PluginHookBeforeAgentStartResult | void> | PluginHookBeforeAgentStartResult | void;
   agent_end: (event: PluginHookAgentEndEvent, ctx: PluginHookAgentContext) => Promise<void> | void;
+  agent_stream: (
+    event: PluginHookAgentStreamEvent,
+    ctx: PluginHookAgentContext,
+  ) => Promise<void> | void;
   before_compaction: (
     event: PluginHookBeforeCompactionEvent,
     ctx: PluginHookAgentContext,

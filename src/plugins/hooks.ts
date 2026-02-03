@@ -11,6 +11,7 @@ import type {
   PluginHookAfterToolCallEvent,
   PluginHookAgentContext,
   PluginHookAgentEndEvent,
+  PluginHookAgentStreamEvent,
   PluginHookBeforeAgentStartEvent,
   PluginHookBeforeAgentStartResult,
   PluginHookBeforeCompactionEvent,
@@ -40,6 +41,7 @@ export type {
   PluginHookAgentContext,
   PluginHookBeforeAgentStartEvent,
   PluginHookBeforeAgentStartResult,
+  PluginHookAgentStreamEvent,
   PluginHookAgentEndEvent,
   PluginHookBeforeCompactionEvent,
   PluginHookAfterCompactionEvent,
@@ -208,6 +210,18 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     ctx: PluginHookAgentContext,
   ): Promise<void> {
     return runVoidHook("agent_end", event, ctx);
+  }
+
+  /**
+   * Run agent_stream hook.
+   * Allows plugins to receive and process streaming agent events.
+   * Runs in parallel (fire-and-forget).
+   */
+  async function runAgentStream(
+    event: PluginHookAgentStreamEvent,
+    ctx: PluginHookAgentContext,
+  ): Promise<void> {
+    return runVoidHook("agent_stream", event, ctx);
   }
 
   /**
@@ -443,6 +457,7 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
     // Agent hooks
     runBeforeAgentStart,
     runAgentEnd,
+    runAgentStream,
     runBeforeCompaction,
     runAfterCompaction,
     // Message hooks

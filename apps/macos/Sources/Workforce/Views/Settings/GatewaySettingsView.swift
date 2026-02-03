@@ -5,6 +5,7 @@ struct GatewaySettingsView: View {
 
     @AppStorage("workforceGatewayPort") private var port = 18789
     @AppStorage("workforceGatewayToken") private var token = ""
+    @AppStorage("workforceGatewayPassword") private var password = ""
 
     var body: some View {
         Form {
@@ -20,6 +21,9 @@ struct GatewaySettingsView: View {
 
                 SecureField("Token", text: self.$token)
                     .textFieldStyle(.roundedBorder)
+
+                SecureField("Password (optional)", text: self.$password)
+                    .textFieldStyle(.roundedBorder)
             }
 
             Section {
@@ -27,6 +31,7 @@ struct GatewaySettingsView: View {
                     Task { await self.gatewayService.connect() }
                 }
                 .disabled(self.gatewayService.connectionState == .connecting)
+                .keyboardShortcut(.defaultAction)
             }
         }
         .formStyle(.grouped)

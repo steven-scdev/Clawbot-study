@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct MainWindowView: View {
     @Binding var selection: SidebarItem?
@@ -7,6 +8,7 @@ struct MainWindowView: View {
     var employeeService: EmployeeService
     var taskService: TaskService
     @State private var flowState: TaskFlowState = .idle
+    @State private var showSettingsSheet = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -44,7 +46,37 @@ struct MainWindowView: View {
                     )
                     .frame(width: 12)
                     .allowsHitTesting(false)
+
+                // Quick access to Settings if the app menu is unavailable for any reason
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button {
+                            // Try to open the SwiftUI Settings scene via standard selectors.
+                            NSApplication.shared.activate(ignoringOtherApps: true)
+                            let didOpen = NSApplication.shared.sendAction(NSSelectorFromString("showSettingsWindow:"), to: nil, from: nil)
+                            if !didOpen {
+                                let didOpenPrefs = NSApplication.shared.sendAction(NSSelectorFromString("showPreferencesWindow:"), to: nil, from: nil)
+                                if !didOpenPrefs {
+                                    // Fallback: present Settings content as a sheet so user can inject token
+                                    self.showSettingsSheet = true
+                                }
+                            }
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Open Settings (⌘,)")
+                    }
+                    .padding([.top, .trailing], 10)
+                    Spacer()
+                }
             }
+        }
+        .sheet(isPresented: self.$showSettingsSheet) {
+            SettingsView(gatewayService: self.gatewayService)
+                .frame(width: 500, height: 400)
         }
         .onChange(of: self.selection) { _, _ in
             if self.flowState != .idle {

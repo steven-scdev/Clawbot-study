@@ -65,6 +65,7 @@ struct WorkforceApp: App {
             .frame(minWidth: 900, minHeight: 600)
             .preferredColorScheme(.light)
             .task {
+                self.taskService.startGlobalListener()
                 await self.gatewayService.connect()
             }
         }

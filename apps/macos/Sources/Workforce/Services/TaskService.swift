@@ -217,16 +217,22 @@ final class TaskService {
     // MARK: - Event Observation
 
     /// Start a global listener for all workforce.task.* events.
+    /// Automatically re-subscribes when the stream ends (e.g. after a disconnect/reconnect cycle).
     func startGlobalListener() {
         self.globalListener?.cancel()
         self.globalListener = Task { [weak self] in
-            guard let self else { return }
-            let stream = await self.gateway.subscribe()
-            for await push in stream {
-                guard !Task.isCancelled else { break }
-                await MainActor.run {
-                    self.handleWorkforcePush(push)
+            while !Task.isCancelled {
+                guard let self else { return }
+                let stream = await self.gateway.subscribe()
+                for await push in stream {
+                    guard !Task.isCancelled else { break }
+                    await MainActor.run {
+                        self.handleWorkforcePush(push)
+                    }
                 }
+                // Stream ended (disconnect). Brief pause before re-subscribing
+                // so we don't spin while waiting for reconnection.
+                try? await Task.sleep(for: .seconds(1))
             }
         }
     }

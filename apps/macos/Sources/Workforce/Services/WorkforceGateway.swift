@@ -20,6 +20,7 @@ actor WorkforceGateway {
     typealias Config = (url: URL, token: String?, password: String?)
 
     private var client: GatewayChannelActor?
+    private var connectionId = UUID()
     private var subscribers: [UUID: AsyncStream<GatewayPush>.Continuation] = [:]
     private var lastSnapshot: HelloOk?
     private let decoder = JSONDecoder()
@@ -28,6 +29,25 @@ actor WorkforceGateway {
         if let client {
             await client.shutdown()
         }
+
+        // Stamp this connection so stale disconnect handlers are ignored.
+        // When shutdown() triggers the old actor's disconnectHandler during
+        // an await suspension point, the handler would otherwise destroy
+        // the newly-created actor — causing an infinite reconnect cascade.
+        let connId = UUID()
+        self.connectionId = connId
+
+        // Configure connection options for Workforce client
+        let connectOptions = GatewayConnectOptions(
+            role: "operator",
+            scopes: ["operator.admin", "operator.approvals"],
+            caps: [],
+            commands: [],
+            permissions: [:],
+            clientId: "openclaw-macos",
+            clientMode: "ui",
+            clientDisplayName: "Workforce")
+
         let channel = GatewayChannelActor(
             url: url,
             token: token,
@@ -35,8 +55,9 @@ actor WorkforceGateway {
             pushHandler: { [weak self] push in
                 await self?.handlePush(push)
             },
+            connectOptions: connectOptions,
             disconnectHandler: { [weak self] reason in
-                await self?.handleDisconnect(reason)
+                await self?.handleDisconnect(forConnection: connId, reason: reason)
             })
         self.client = channel
         try await channel.connect()
@@ -87,13 +108,27 @@ actor WorkforceGateway {
         }
     }
 
-    private func handleDisconnect(_ reason: String) {
+    private func handleDisconnect(forConnection id: UUID, reason: String) async {
+        // Ignore stale disconnects from previous connections.
+        // Without this guard, shutting down actor1 triggers its disconnect
+        // handler during an await suspension in connect(), which would
+        // destroy the newly-created actor2 and cascade indefinitely.
+        guard id == self.connectionId else { return }
+
+        let oldClient = self.client
         self.client = nil
         self.lastSnapshot = nil
         for (_, c) in self.subscribers {
             c.finish()
         }
         self.subscribers.removeAll()
+        // Await shutdown synchronously so the actor's internal reconnect
+        // (shouldReconnect, watchdog, scheduleReconnect) is stopped BEFORE
+        // the disconnect handler returns — preventing a dual-reconnect race
+        // with WorkforceGatewayService.scheduleReconnect().
+        if let oldClient {
+            await oldClient.shutdown()
+        }
     }
 
     private func removeSubscriber(_ id: UUID) {

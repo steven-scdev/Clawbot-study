@@ -2,6 +2,7 @@ import { normalizeVerboseLevel } from "../auto-reply/thinking.js";
 import { loadConfig } from "../config/config.js";
 import { type AgentEventPayload, getAgentRunContext } from "../infra/agent-events.js";
 import { resolveHeartbeatVisibility } from "../infra/heartbeat-visibility.js";
+import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { loadSessionEntry } from "./session-utils.js";
 import { formatForLog } from "./ws-log.js";
 
@@ -263,6 +264,28 @@ export function createAgentEventHandler({
     }
     agentRunSeq.set(evt.runId, evt.seq);
     broadcast("agent", agentPayload);
+
+    // Call plugin hooks for streaming events
+    const hookRunner = getGlobalHookRunner();
+    if (hookRunner?.hasHooks("agent_stream")) {
+      hookRunner
+        .runAgentStream(
+          {
+            stream: evt.stream as "thinking" | "assistant" | "tool" | "lifecycle",
+            event: typeof evt.data?.event === "string" ? evt.data.event : undefined,
+            data: evt.data,
+          },
+          {
+            agentId: undefined,
+            sessionKey,
+            workspaceDir: undefined,
+            messageProvider: undefined,
+          },
+        )
+        .catch(() => {
+          // Ignore hook errors to avoid breaking streaming
+        });
+    }
 
     const lifecyclePhase =
       evt.stream === "lifecycle" && typeof evt.data?.phase === "string" ? evt.data.phase : null;
