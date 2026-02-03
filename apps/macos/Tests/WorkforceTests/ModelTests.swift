@@ -142,7 +142,7 @@ struct TaskOutputTests {
     @Test("unknown OutputType decodes to .unknown")
     func unknownOutputType() throws {
         let json = """
-        "spreadsheet"
+        "unsupportedtype"
         """
         let outputType = try self.decoder.decode(OutputType.self, from: Data(json.utf8))
         #expect(outputType == .unknown)

@@ -184,6 +184,11 @@ private struct OutputPillView: View {
         case .document: return "Doc"
         case .website: return "Web"
         case .image: return "Image"
+        case .presentation: return "Slides"
+        case .spreadsheet: return "Sheet"
+        case .video: return "Video"
+        case .audio: return "Audio"
+        case .code: return "Code"
         case .unknown: return "Output"
         }
     }
@@ -194,6 +199,11 @@ private struct OutputPillView: View {
         case .document: Color(red: 0.45, green: 0.2, blue: 0.7)
         case .website: Color(red: 0.0, green: 0.5, blue: 0.5)
         case .image: Color(red: 0.7, green: 0.15, blue: 0.4)
+        case .presentation: Color(red: 0.8, green: 0.4, blue: 0.0)
+        case .spreadsheet: Color(red: 0.0, green: 0.6, blue: 0.2)
+        case .video: Color(red: 0.5, green: 0.0, blue: 0.8)
+        case .audio: Color(red: 0.85, green: 0.3, blue: 0.6)
+        case .code: Color(red: 0.2, green: 0.3, blue: 0.5)
         case .unknown: Color(white: 0.4)
         }
     }
@@ -204,6 +214,11 @@ private struct OutputPillView: View {
         case .document: .purple.opacity(0.1)
         case .website: .teal.opacity(0.1)
         case .image: .pink.opacity(0.1)
+        case .presentation: .orange.opacity(0.1)
+        case .spreadsheet: .green.opacity(0.1)
+        case .video: .purple.opacity(0.15)
+        case .audio: .pink.opacity(0.15)
+        case .code: .blue.opacity(0.15)
         case .unknown: .gray.opacity(0.1)
         }
     }
@@ -214,6 +229,11 @@ private struct OutputPillView: View {
         case .document: .purple.opacity(0.2)
         case .website: .teal.opacity(0.2)
         case .image: .pink.opacity(0.2)
+        case .presentation: .orange.opacity(0.2)
+        case .spreadsheet: .green.opacity(0.2)
+        case .video: .purple.opacity(0.25)
+        case .audio: .pink.opacity(0.25)
+        case .code: .blue.opacity(0.25)
         case .unknown: .gray.opacity(0.15)
         }
     }

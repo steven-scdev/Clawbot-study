@@ -84,11 +84,12 @@ struct MainWindowView: View {
                 self.flowState = .idle
             }
         }
-        .onChange(of: self.activeTaskStatus) { _, newStatus in
-            if case let .executing(taskId) = self.flowState, newStatus == .completed {
-                self.flowState = .reviewing(taskId: taskId)
-            }
-        }
+        // Disabled auto-transition to keep users in .chatting state with inline artifacts
+        // .onChange(of: self.activeTaskStatus) { _, newStatus in
+        //     if case let .executing(taskId) = self.flowState, newStatus == .completed {
+        //         self.flowState = .reviewing(taskId: taskId)
+        //     }
+        // }
     }
 
     @ViewBuilder

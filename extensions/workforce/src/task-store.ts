@@ -12,7 +12,7 @@ export type TaskActivity = {
 
 export type TaskOutput = {
   id: string;
-  type: "file" | "website" | "document" | "image";
+  type: "file" | "website" | "document" | "image" | "presentation" | "spreadsheet" | "video" | "audio" | "code";
   title: string;
   filePath?: string;
   url?: string;

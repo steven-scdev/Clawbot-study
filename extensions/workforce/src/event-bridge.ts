@@ -174,6 +174,11 @@ function classifyOutputType(ext: string): TaskOutput["type"] {
   if (["html", "htm"].includes(ext)) { return "website"; }
   if (["png", "jpg", "jpeg", "gif", "svg", "webp"].includes(ext)) { return "image"; }
   if (["md", "txt", "pdf", "doc", "docx"].includes(ext)) { return "document"; }
+  if (["pptx", "ppt", "key"].includes(ext)) { return "presentation"; }
+  if (["xlsx", "xls", "csv", "numbers"].includes(ext)) { return "spreadsheet"; }
+  if (["mp4", "mov", "webm", "avi", "mkv"].includes(ext)) { return "video"; }
+  if (["mp3", "wav", "aac", "ogg", "flac", "m4a"].includes(ext)) { return "audio"; }
+  if (["swift", "ts", "js", "py", "go", "rs", "java", "c", "cpp", "rb"].includes(ext)) { return "code"; }
   return "file";
 }
 

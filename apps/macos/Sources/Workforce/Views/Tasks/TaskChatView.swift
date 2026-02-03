@@ -11,6 +11,8 @@ struct TaskChatView: View {
 
     @State private var messageText = ""
     @State private var blobPhase: CGFloat = 0
+    @State private var showArtifactPane = false
+    @State private var selectedOutputId: String?
 
     private var task: WorkforceTask? {
         self.taskService.tasks.first(where: { $0.id == self.taskId })
@@ -90,65 +92,123 @@ struct TaskChatView: View {
         return lastActivity.type != .text
     }
 
+    /// Outputs for the current task
+    private var taskOutputs: [TaskOutput] {
+        guard let task else { return [] }
+        return task.outputs
+    }
+
+    /// Currently selected output or most recent
+    private var currentOutput: TaskOutput? {
+        guard let task else { return nil }
+        if let id = selectedOutputId {
+            return task.outputs.first(where: { $0.id == id })
+        }
+        return task.outputs.last
+    }
+
+    /// Whether to show the approve button
+    private var showApproveButton: Bool {
+        guard let task else { return false }
+        return task.status == .completed && !task.outputs.isEmpty
+    }
+
     var body: some View {
         ZStack {
             BlobBackgroundView(blobPhase: self.$blobPhase)
 
-            VStack(spacing: 0) {
-                ChatHeaderView(
-                    employee: self.employee,
-                    taskDescription: self.task?.description ?? "",
-                    taskStatus: self.task?.status ?? .running,
-                    onBack: self.onBack
-                )
+            HStack(spacing: 0) {
+                // Left pane: Chat
+                VStack(spacing: 0) {
+                    ChatHeaderView(
+                        employee: self.employee,
+                        taskDescription: self.task?.description ?? "",
+                        taskStatus: self.task?.status ?? .running,
+                        onBack: self.onBack
+                    )
 
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 12) {
-                            ForEach(self.chatMessages) { msg in
-                                ChatBubbleView(
-                                    message: msg,
-                                    employeeName: self.employee.name
-                                )
-                                .id(msg.id)
+                    ScrollViewReader { proxy in
+                        ScrollView {
+                            LazyVStack(spacing: 12) {
+                                ForEach(self.chatMessages) { msg in
+                                    ChatBubbleView(
+                                        message: msg,
+                                        employeeName: self.employee.name
+                                    )
+                                    .id(msg.id)
+                                }
+
+                                if !self.recentInternalActivities.isEmpty, self.isAgentWorking {
+                                    AgentThinkingStreamView(activities: self.recentInternalActivities)
+                                        .id("thinking-stream")
+                                }
+
+                                if self.showTypingIndicator {
+                                    ChatBubbleView.typingBubble(employeeName: self.employee.name)
+                                        .id("typing-indicator")
+                                }
+
+                                // Bottom spacer for input pill clearance
+                                Color.clear.frame(height: 100)
+                                    .id("bottom-anchor")
                             }
-
-                            if !self.recentInternalActivities.isEmpty, self.isAgentWorking {
-                                AgentThinkingStreamView(activities: self.recentInternalActivities)
-                                    .id("thinking-stream")
+                            .padding(.horizontal, 16)
+                            .padding(.top, 20)
+                        }
+                        .scrollIndicators(.hidden)
+                        .onChange(of: self.chatMessages.count) { _, _ in
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                proxy.scrollTo("bottom-anchor", anchor: .bottom)
                             }
-
-                            if self.showTypingIndicator {
-                                ChatBubbleView.typingBubble(employeeName: self.employee.name)
-                                    .id("typing-indicator")
+                        }
+                        .onChange(of: self.recentInternalActivities.count) { _, _ in
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                proxy.scrollTo("bottom-anchor", anchor: .bottom)
                             }
+                        }
+                    }
 
-                            // Bottom spacer for input pill clearance
-                            Color.clear.frame(height: 100)
-                                .id("bottom-anchor")
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 20)
-                    }
-                    .scrollIndicators(.hidden)
-                    .onChange(of: self.chatMessages.count) { _, _ in
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            proxy.scrollTo("bottom-anchor", anchor: .bottom)
-                        }
-                    }
-                    .onChange(of: self.recentInternalActivities.count) { _, _ in
-                        withAnimation(.easeOut(duration: 0.3)) {
-                            proxy.scrollTo("bottom-anchor", anchor: .bottom)
-                        }
-                    }
+                    // Floating input pill
+                    ChatInputPill(
+                        text: self.$messageText,
+                        placeholder: "Send a message to \(self.employee.name)...",
+                        onSubmit: self.sendMessage
+                    )
                 }
+                .frame(maxWidth: .infinity)
 
-                // Floating input pill
-                ChatInputPill(
-                    text: self.$messageText,
-                    placeholder: "Send a message to \(self.employee.name)...",
-                    onSubmit: self.sendMessage
-                )
+                // Right pane: Artifacts (conditional)
+                if self.showArtifactPane, !self.taskOutputs.isEmpty {
+                    Divider()
+
+                    ArtifactPaneView(
+                        output: self.currentOutput,
+                        allOutputs: self.taskOutputs,
+                        showApproveButton: self.showApproveButton,
+                        taskService: self.taskService,
+                        taskId: self.taskId,
+                        onOutputSelect: { outputId in
+                            self.selectedOutputId = outputId
+                        },
+                        onClose: {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                self.showArtifactPane = false
+                            }
+                        },
+                        onApprove: {
+                            self.onBack()
+                        }
+                    )
+                    .frame(maxWidth: .infinity)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+            }
+        }
+        .onChange(of: self.taskOutputs.count) { old, new in
+            if old == 0, new > 0 {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    self.showArtifactPane = true
+                }
             }
         }
         .onAppear {

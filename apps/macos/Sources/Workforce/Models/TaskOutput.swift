@@ -50,6 +50,11 @@ enum OutputType: String, Codable, Sendable {
     case website
     case document
     case image
+    case presentation
+    case spreadsheet
+    case video
+    case audio
+    case code
     case unknown
 
     init(from decoder: Decoder) throws {
