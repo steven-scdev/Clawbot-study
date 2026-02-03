@@ -318,31 +318,45 @@ struct TaskInputView: View {
 
     private var blobBackground: some View {
         ZStack {
+            // Full-screen base gradient (indigo → purple → rose)
+            LinearGradient(
+                colors: [
+                    Color(red: 0.91, green: 0.89, blue: 0.97),  // lighter indigo
+                    Color(red: 0.93, green: 0.88, blue: 0.95),  // lighter purple
+                    Color(red: 0.97, green: 0.90, blue: 0.93),  // lighter rose
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            // Large blue blob — upper-left area
             Circle()
-                .fill(Color.blue.opacity(0.12))
-                .frame(width: 350, height: 350)
-                .blur(radius: 80)
+                .fill(Color.blue.opacity(0.15))
+                .frame(width: 550, height: 550)
+                .blur(radius: 100)
                 .offset(
-                    x: -80 + self.blobPhase * 60,
-                    y: -120 - self.blobPhase * 50
+                    x: -150 + self.blobPhase * 60,
+                    y: -180 - self.blobPhase * 50
                 )
 
+            // Purple blob — upper-right area
             Circle()
-                .fill(Color.purple.opacity(0.12))
-                .frame(width: 300, height: 300)
-                .blur(radius: 80)
+                .fill(Color.purple.opacity(0.15))
+                .frame(width: 450, height: 450)
+                .blur(radius: 100)
                 .offset(
-                    x: 100 - self.blobPhase * 40,
-                    y: -60 + self.blobPhase * 40
+                    x: 180 - self.blobPhase * 40,
+                    y: -100 + self.blobPhase * 40
                 )
 
+            // Pink blob — bottom-center area
             Circle()
-                .fill(Color.pink.opacity(0.10))
-                .frame(width: 400, height: 400)
-                .blur(radius: 80)
+                .fill(Color.pink.opacity(0.13))
+                .frame(width: 650, height: 650)
+                .blur(radius: 100)
                 .offset(
                     x: -30 - self.blobPhase * 20,
-                    y: 200 - self.blobPhase * 60
+                    y: 250 - self.blobPhase * 60
                 )
         }
         .allowsHitTesting(false)

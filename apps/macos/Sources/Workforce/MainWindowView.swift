@@ -30,7 +30,7 @@ struct MainWindowView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black.opacity(0.03))
+                .background(self.selectedEmployee != nil ? Color.clear : Color.black.opacity(0.03))
 
                 // Inner shadow along left edge for depth separation
                 Rectangle()
