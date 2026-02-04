@@ -220,6 +220,16 @@ private struct CompletedCardView: View {
             return (Color.orange, "photo", "Image")
         case .file:
             return (Color.blue, "doc", "File")
+        case .presentation:
+            return (Color.pink, "rectangle.on.rectangle.angled", "Presentation")
+        case .spreadsheet:
+            return (Color.green, "tablecells", "Spreadsheet")
+        case .video:
+            return (Color.red, "play.rectangle.fill", "Video")
+        case .audio:
+            return (Color.purple, "waveform", "Audio")
+        case .code:
+            return (Color.indigo, "curlybraces", "Code")
         case .unknown:
             return (Color.gray, "questionmark", "Unknown")
         }
