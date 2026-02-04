@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Browser-chrome–style header for the artifact pane: muted dots, glass URL pill, Expand + close buttons.
+/// Browser-chrome–style header for the artifact pane: close button (left), glass URL pill (center), Expand button (right).
 struct ArtifactHeaderView: View {
     let currentOutput: TaskOutput?
     let allOutputs: [TaskOutput]
@@ -11,16 +11,17 @@ struct ArtifactHeaderView: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            // Decorative traffic-light dots (muted)
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { _ in
-                    Circle()
-                        .fill(Color(white: 0.55).opacity(0.4))
-                        .frame(width: 10, height: 10)
-                }
+            // Close button (top-left)
+            Button(action: self.onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Color.white.opacity(0.3))
+                    .clipShape(Circle())
             }
-            .accessibilityHidden(true)
-            .padding(.leading, 4)
+            .buttonStyle(.plain)
+            .help("Close artifact preview")
 
             Spacer()
 
@@ -49,18 +50,6 @@ struct ArtifactHeaderView: View {
                 .buttonStyle(.plain)
                 .help(self.isExpanded ? "Restore split view" : "Expand to full width")
             }
-
-            // Close button
-            Button(action: self.onClose) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 22, height: 22)
-                    .background(Color.white.opacity(0.3))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .help("Close artifact preview")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
