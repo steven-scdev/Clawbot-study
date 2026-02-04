@@ -210,6 +210,11 @@ extension OutputType {
         case .website: "globe"
         case .document: "doc.text.fill"
         case .image: "photo.fill"
+        case .presentation: "rectangle.on.rectangle.angled"
+        case .spreadsheet: "tablecells"
+        case .video: "play.rectangle.fill"
+        case .audio: "waveform"
+        case .code: "curlybraces"
         case .unknown: "questionmark.square"
         }
     }

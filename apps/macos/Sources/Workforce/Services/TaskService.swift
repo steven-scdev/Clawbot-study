@@ -238,7 +238,11 @@ final class TaskService {
             self.mergeFetchedTasks(response.tasks)
             self.logger.info("Loaded \(response.tasks.count) tasks from gateway")
         } catch {
-            self.logger.warning("workforce.tasks.list failed: \(error.localizedDescription)")
+            if let decodingError = error as? DecodingError {
+                self.logger.warning("workforce.tasks.list decode error: \(decodingError)")
+            } else {
+                self.logger.warning("workforce.tasks.list failed: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -375,13 +379,31 @@ final class TaskService {
 
         case "workforce.task.output":
             if let outDict = payload["output"]?.value as? [String: ProtoAnyCodable] {
+                let rawFilePath = outDict["filePath"]?.value as? String
+                let rawUrl = outDict["url"]?.value as? String
+                let title = outDict["title"]?.value as? String ?? "Output"
+
+                // Fallback: if filePath is nil but title looks like a filename,
+                // reconstruct from the default agent workspace path.
+                let resolvedFilePath: String?
+                if let fp = rawFilePath, !fp.isEmpty {
+                    resolvedFilePath = fp
+                } else if rawUrl == nil, title.contains(".") {
+                    let home = FileManager.default.homeDirectoryForCurrentUser.path
+                    resolvedFilePath = "\(home)/.openclaw/workspace/\(title)"
+                } else {
+                    resolvedFilePath = nil
+                }
+
+                self.logger.info("[output] taskId=\(taskId) type=\(outDict["type"]?.value as? String ?? "?") title=\(title) filePath=\(resolvedFilePath ?? "nil") url=\(rawUrl ?? "nil") rawFilePath=\(rawFilePath ?? "nil")")
+
                 let output = TaskOutput(
                     id: outDict["id"]?.value as? String ?? UUID().uuidString,
                     taskId: taskId,
                     type: OutputType(rawValue: outDict["type"]?.value as? String ?? "") ?? .unknown,
-                    title: outDict["title"]?.value as? String ?? "Output",
-                    filePath: outDict["filePath"]?.value as? String,
-                    url: outDict["url"]?.value as? String,
+                    title: title,
+                    filePath: resolvedFilePath,
+                    url: rawUrl,
                     createdAt: Date())
                 self.taskOutputs[taskId, default: []].append(output)
                 if let index = self.tasks.firstIndex(where: { $0.id == taskId }) {

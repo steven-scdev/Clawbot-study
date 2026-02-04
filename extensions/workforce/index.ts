@@ -8,7 +8,7 @@ import {
   getTaskBySessionKey,
   type TaskManifest,
 } from "./src/task-store.js";
-import { handleAgentEvent } from "./src/event-bridge.js";
+import { handleAgentEvent, handleToolCall } from "./src/event-bridge.js";
 
 type GatewayMethodOpts = {
   params: Record<string, unknown>;
@@ -317,6 +317,9 @@ const workforcePlugin = {
       const task = getTaskBySessionKey(sessionKey);
       if (!task) { return; }
       const toolName = (event.toolName as string) ?? "tool";
+      const params = (event.params as Record<string, unknown>) ?? {};
+      const result = typeof event.result === "string" ? event.result : undefined;
+
       const activity = {
         id: `act-${crypto.randomUUID().slice(0, 8)}`,
         type: "toolCall" as const,
@@ -329,6 +332,8 @@ const workforcePlugin = {
       if (cachedBroadcast) {
         cachedBroadcast("workforce.task.activity", { taskId: task.id, activity });
         cachedBroadcast("workforce.task.progress", { taskId: task.id, progress });
+        // Detect file/URL outputs from tool calls (this fires regardless of verbose level)
+        handleToolCall(task.id, toolName, params, result, cachedBroadcast);
       } else {
         api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }
