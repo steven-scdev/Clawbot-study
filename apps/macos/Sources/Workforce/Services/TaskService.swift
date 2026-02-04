@@ -40,13 +40,13 @@ final class TaskService {
 
     // MARK: - Dashboard Computed Properties
 
-    /// Dashboard-specific: tasks requiring user attention (clarify/plan/review stages or completed)
+    /// Dashboard-specific: tasks requiring user attention (clarify/plan/review stages only)
+    /// Completed tasks are handled separately in "Recently Completed" section
     var needsAttentionTasks: [WorkforceTask] {
         self.tasks.filter { task in
             (task.status == .running && task.stage == .clarify) ||
             (task.status == .running && task.stage == .plan) ||
-            (task.status == .running && task.stage == .review) ||
-            task.status == .completed
+            (task.status == .running && task.stage == .review)
         }
     }
 

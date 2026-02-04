@@ -9,8 +9,10 @@ import SwiftUI
 
 struct RecentlyCompletedSection: View {
     let items: [CompletedItem]
+    let hasMore: Bool
     let onTap: (CompletedItem) -> Void
     let onMarkAllSeen: () -> Void
+    let onViewAll: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -42,7 +44,14 @@ struct RecentlyCompletedSection: View {
             if items.isEmpty {
                 emptyStateView
             } else {
-                cardsView
+                VStack(spacing: 16) {
+                    cardsView
+
+                    // View all button
+                    if hasMore {
+                        viewAllButton
+                    }
+                }
             }
         }
     }
@@ -80,6 +89,40 @@ struct RecentlyCompletedSection: View {
             ForEach(items) { item in
                 CompletedCardView(item: item, onTap: onTap)
             }
+        }
+    }
+
+    // MARK: - View All Button
+
+    private var viewAllButton: some View {
+        Button {
+            onViewAll()
+        } label: {
+            HStack(spacing: 8) {
+                Text("View all completed tasks")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(Color(white: 0.3))
+
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(Color(white: 0.3))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 16)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white.opacity(0.3))
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.4), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            // Change cursor to pointer on hover
         }
     }
 }
@@ -305,13 +348,21 @@ private struct CompletedCardView: View {
         ),
     ]
 
-    return ZStack {
+    ZStack {
         Color.blue.opacity(0.1).ignoresSafeArea()
-        RecentlyCompletedSection(items: items, onTap: { item in
-            print("Tapped item: \(item.id)")
-        }, onMarkAllSeen: {
-            print("Mark all as seen")
-        })
+        RecentlyCompletedSection(
+            items: items,
+            hasMore: true,
+            onTap: { item in
+                print("Tapped item: \(item.id)")
+            },
+            onMarkAllSeen: {
+                print("Mark all as seen")
+            },
+            onViewAll: {
+                print("View all tapped")
+            }
+        )
         .padding(32)
     }
     .frame(width: 500, height: 600)

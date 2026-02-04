@@ -217,6 +217,9 @@ struct MainWindowView: View {
                 employeeService: self.employeeService,
                 onNavigate: { newState in
                     self.flowState = newState
+                },
+                onViewAllCompleted: {
+                    self.selection = .tasks
                 }
             )
         case .employees:

@@ -11,6 +11,7 @@ struct DashboardView: View {
     let taskService: TaskService
     let employeeService: EmployeeService
     let onNavigate: (TaskFlowState) -> Void
+    let onViewAllCompleted: () -> Void
 
     @AppStorage("dashboard.seenTasks") private var seenTaskIdsString: String = ""
 
@@ -43,9 +44,11 @@ struct DashboardView: View {
 
                         // Recently Completed (right column)
                         RecentlyCompletedSection(
-                            items: recentlyCompletedItems,
+                            items: displayedCompletedItems,
+                            hasMore: hasMoreCompletedItems,
                             onTap: handleCompletedTap,
-                            onMarkAllSeen: markAllAsSeen
+                            onMarkAllSeen: markAllAsSeen,
+                            onViewAll: onViewAllCompleted
                         )
                         .frame(maxWidth: .infinity)
                     }
@@ -126,6 +129,16 @@ struct DashboardView: View {
         }
     }
 
+    /// Limited to first 6 items for dashboard display
+    private var displayedCompletedItems: [CompletedItem] {
+        Array(recentlyCompletedItems.prefix(6))
+    }
+
+    /// Check if there are more than 6 completed items
+    private var hasMoreCompletedItems: Bool {
+        recentlyCompletedItems.count > 6
+    }
+
     // MARK: - Seen Tracking
 
     /// Set of task IDs that have been marked as seen
@@ -191,11 +204,14 @@ struct DashboardView: View {
     let taskService = TaskService()
     let employeeService = EmployeeService()
 
-    return DashboardView(
+    DashboardView(
         taskService: taskService,
         employeeService: employeeService,
         onNavigate: { state in
             print("Navigate to: \(state)")
+        },
+        onViewAllCompleted: {
+            print("View all completed tapped")
         }
     )
     .frame(width: 1400, height: 900)
