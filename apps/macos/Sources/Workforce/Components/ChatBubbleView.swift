@@ -55,14 +55,11 @@ struct ChatBubbleView: View {
 
             // Glass-emma bubble
             VStack(alignment: .leading, spacing: 0) {
-                Text(self.message.content)
-                    .font(.system(size: 13))
-                    .lineSpacing(4)
+                MarkdownText(content: self.message.content, fontSize: 15)
                     .foregroundStyle(Color(white: 0.15))
-                    .textSelection(.enabled)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
             .background(Color.white.opacity(0.25))
             .background(.ultraThinMaterial)
             .clipShape(BubbleShape(isUser: false))
@@ -70,7 +67,7 @@ struct ChatBubbleView: View {
                 BubbleShape(isUser: false)
                     .stroke(Color.white.opacity(0.2), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.03), radius: 8, y: 2)
+            .shadow(color: .black.opacity(0.03), radius: 10, y: 2)
 
             Spacer(minLength: 0)
         }
@@ -86,14 +83,11 @@ struct ChatBubbleView: View {
 
             // Glass-user bubble
             VStack(alignment: .leading, spacing: 0) {
-                Text(self.message.content)
-                    .font(.system(size: 13))
-                    .lineSpacing(4)
+                MarkdownText(content: self.message.content, fontSize: 15)
                     .foregroundStyle(Color(white: 0.15))
-                    .textSelection(.enabled)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
             .background(Color.white.opacity(0.7))
             .background(.ultraThinMaterial)
             .clipShape(BubbleShape(isUser: true))
@@ -101,7 +95,7 @@ struct ChatBubbleView: View {
                 BubbleShape(isUser: true)
                     .stroke(Color.white.opacity(0.5), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.05), radius: 8, y: 2)
+            .shadow(color: .black.opacity(0.05), radius: 12, y: 2)
 
             // Blue user avatar
             Circle()
@@ -188,14 +182,11 @@ struct ChatBubbleView: View {
                 )
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(self.message.content)
-                    .font(.system(size: 13))
-                    .lineSpacing(4)
+                MarkdownText(content: self.message.content, fontSize: 15)
                     .foregroundStyle(Color.red.opacity(0.8))
-                    .textSelection(.enabled)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 14)
             .background(Color.red.opacity(0.08))
             .background(.ultraThinMaterial)
             .clipShape(BubbleShape(isUser: false))
@@ -246,5 +237,40 @@ private struct BubbleShape: Shape {
         }
 
         return path
+    }
+}
+
+// MARK: - Markdown Text Renderer
+
+/// Renders markdown text with proper formatting (bold, italic, lists, etc.)
+private struct MarkdownText: View {
+    let content: String
+    let fontSize: CGFloat
+
+    var body: some View {
+        Text(self.attributedContent)
+            .lineSpacing(6)
+    }
+
+    private var attributedContent: AttributedString {
+        do {
+            // Parse markdown and create attributed string
+            var attributedString = try AttributedString(
+                markdown: self.content,
+                options: AttributedString.MarkdownParsingOptions(
+                    interpretedSyntax: .inlineOnlyPreservingWhitespace
+                )
+            )
+
+            // Apply base font size
+            attributedString.font = .system(size: self.fontSize)
+
+            return attributedString
+        } catch {
+            // Fallback to plain text if markdown parsing fails
+            var fallback = AttributedString(self.content)
+            fallback.font = .system(size: self.fontSize)
+            return fallback
+        }
     }
 }

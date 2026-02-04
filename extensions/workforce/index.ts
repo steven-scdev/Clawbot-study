@@ -319,7 +319,7 @@ const workforcePlugin = {
         const mindContent = composeMind(employee.id, mindsDir);
         if (mindContent) {
           api.logger.info(`[workforce] Injecting mind for ${employee.id} (${mindContent.length} chars)`);
-          return { prependContext: mindContent };
+          return { systemPrompt: mindContent };
         }
       }
     });

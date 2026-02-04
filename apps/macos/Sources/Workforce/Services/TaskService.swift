@@ -517,18 +517,38 @@ final class TaskService {
         var seenIDs = Set<String>()
         var merged = fetched.map { remote -> WorkforceTask in
             seenIDs.insert(remote.id)
-            guard let existing = local[remote.id] else { return remote }
+            guard let existing = local[remote.id] else {
+                // Even for new tasks, coalesce streaming text
+                var task = remote
+                task.activities = self.coalesceStreamingText(remote.activities)
+                return task
+            }
             var task = remote
 
             // Merge activities: preserve local user messages and combine with server activities
             if !existing.activities.isEmpty {
+                // Always preserve local user messages regardless of ID matching
+                let localUserMessages = existing.activities.filter { $0.type == .userMessage }
+
+                // Create a set of server activity IDs for deduplication
                 let serverIds = Set(remote.activities.map(\.id))
-                let localOnlyActivities = existing.activities.filter { !serverIds.contains($0.id) }
+
+                // Keep non-user-message local activities that aren't in the server response
+                let otherLocalActivities = existing.activities.filter {
+                    $0.type != .userMessage && !serverIds.contains($0.id)
+                }
 
                 // Combine and sort by timestamp
-                var allActivities = remote.activities + localOnlyActivities
+                var allActivities = remote.activities + localUserMessages + otherLocalActivities
                 allActivities.sort { $0.timestamp < $1.timestamp }
+
+                // Coalesce streaming text chunks into single messages
+                allActivities = self.coalesceStreamingText(allActivities)
+
                 task.activities = allActivities
+            } else {
+                // No local activities, just coalesce server's streaming text
+                task.activities = self.coalesceStreamingText(remote.activities)
             }
 
             if !existing.outputs.isEmpty { task.outputs = existing.outputs }
@@ -551,15 +571,24 @@ final class TaskService {
 
             // Merge activities: preserve local user messages and add new server activities
             if !existing.activities.isEmpty {
-                // Create a set of server activity IDs for deduplication
+                // Always preserve local user messages regardless of ID matching
+                let localUserMessages = existing.activities.filter { $0.type == .userMessage }
+
+                // Create a set of server activity IDs for deduplication (excluding user messages)
                 let serverIds = Set(merged.activities.map(\.id))
 
-                // Keep all local activities that aren't in the server response
-                let localOnlyActivities = existing.activities.filter { !serverIds.contains($0.id) }
+                // Keep all non-user-message local activities that aren't in the server response
+                let otherLocalActivities = existing.activities.filter {
+                    $0.type != .userMessage && !serverIds.contains($0.id)
+                }
 
-                // Combine: server activities + local-only activities, sorted by timestamp
-                var allActivities = merged.activities + localOnlyActivities
+                // Combine: server activities + local user messages + other local activities
+                var allActivities = merged.activities + localUserMessages + otherLocalActivities
                 allActivities.sort { $0.timestamp < $1.timestamp }
+
+                // Coalesce streaming text chunks into single messages (preserves user messages)
+                allActivities = self.coalesceStreamingText(allActivities)
+
                 merged.activities = allActivities
             }
 
@@ -570,5 +599,37 @@ final class TaskService {
         } else {
             self.tasks.insert(task, at: 0)
         }
+    }
+
+    /// Coalesce consecutive .text activities that are streaming chunks (where each is cumulative).
+    /// For a sequence of .text activities, keep only the longest one (the final streaming state).
+    private func coalesceStreamingText(_ activities: [TaskActivity]) -> [TaskActivity] {
+        var result: [TaskActivity] = []
+        var currentTextGroup: [TaskActivity] = []
+
+        for activity in activities {
+            if activity.type == .text {
+                currentTextGroup.append(activity)
+            } else {
+                // Flush accumulated text group
+                if !currentTextGroup.isEmpty {
+                    // Keep the longest message (final streaming state)
+                    if let longest = currentTextGroup.max(by: { $0.message.count < $1.message.count }) {
+                        result.append(longest)
+                    }
+                    currentTextGroup = []
+                }
+                result.append(activity)
+            }
+        }
+
+        // Flush final text group
+        if !currentTextGroup.isEmpty {
+            if let longest = currentTextGroup.max(by: { $0.message.count < $1.message.count }) {
+                result.append(longest)
+            }
+        }
+
+        return result
     }
 }
