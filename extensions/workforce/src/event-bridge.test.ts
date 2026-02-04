@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { handleAgentEvent } from "./event-bridge.js";
+import { handleAgentEvent, handleToolCall } from "./event-bridge.js";
 import { newTaskManifest, createTask, getTask } from "./task-store.js";
 import { join } from "node:path";
 import { homedir } from "node:os";
@@ -310,6 +310,68 @@ describe("handleAgentEvent", () => {
     }
   });
 
+  it("detects bold-formatted filenames from assistant text", () => {
+    const task = createTestTask("workforce-emma-web-test030");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleAgentEvent(
+      {
+        sessionKey: task.sessionKey,
+        stream: "assistant",
+        data: { text: "I've created **LifeWiki_Presentation.pptx** for you." },
+      },
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeTruthy();
+
+    const payload = outputBroadcast!.payload as { output: { type: string; title: string } };
+    expect(payload.output.type).toBe("presentation");
+    expect(payload.output.title).toBe("LifeWiki_Presentation.pptx");
+  });
+
+  it("detects multiple outputs from a single assistant message", () => {
+    const task = createTestTask("workforce-emma-web-test031");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleAgentEvent(
+      {
+        sessionKey: task.sessionKey,
+        stream: "assistant",
+        data: {
+          text: "Files created:\n1. **LifeWiki_Presentation.pptx** - PowerPoint\n2. **lifewiki-presentation.html** - Web version\n3. **lifewiki-outline.md** - Outline",
+        },
+      },
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcasts = broadcasts.filter((b) => b.event === "workforce.task.output");
+    expect(outputBroadcasts).toHaveLength(3);
+
+    const types = outputBroadcasts.map((b) => (b.payload as { output: { type: string } }).output.type);
+    expect(types).toContain("presentation");
+    expect(types).toContain("website");
+    expect(types).toContain("document");
+  });
+
+  it("deduplicates bold and backtick mentions of the same file", () => {
+    const task = createTestTask("workforce-emma-web-test032");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleAgentEvent(
+      {
+        sessionKey: task.sessionKey,
+        stream: "assistant",
+        data: { text: "Created **report.pdf** — the `report.pdf` is ready." },
+      },
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcasts = broadcasts.filter((b) => b.event === "workforce.task.output");
+    expect(outputBroadcasts).toHaveLength(1);
+  });
+
   it("detects stage transitions from assistant text", () => {
     const task = createTestTask("workforce-emma-web-test004");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
@@ -324,5 +386,165 @@ describe("handleAgentEvent", () => {
 
     const stageBroadcast = broadcasts.find((b) => b.event === "workforce.task.stage");
     expect(stageBroadcast).toBeTruthy();
+  });
+});
+
+describe("handleToolCall (after_tool_call hook path)", () => {
+  it("detects file output from Write tool params", () => {
+    const task = createTestTask("workforce-emma-web-test020");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "Write",
+      { file_path: "/tmp/landing-page.html" },
+      "File written successfully",
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeTruthy();
+
+    const payload = outputBroadcast!.payload as { output: { type: string; filePath: string; title: string } };
+    expect(payload.output.type).toBe("website");
+    expect(payload.output.filePath).toBe("/tmp/landing-page.html");
+    expect(payload.output.title).toBe("landing-page.html");
+
+    // Verify output was persisted to task store
+    const updated = getTask(task.id);
+    expect(updated!.outputs.length).toBe(1);
+    expect(updated!.outputs[0].filePath).toBe("/tmp/landing-page.html");
+  });
+
+  it("detects file output from write_file tool params", () => {
+    const task = createTestTask("workforce-emma-web-test021");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "write_file",
+      { path: "/home/user/report.md" },
+      undefined,
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeTruthy();
+
+    const payload = outputBroadcast!.payload as { output: { type: string } };
+    expect(payload.output.type).toBe("document");
+  });
+
+  it("detects localhost URL from Bash tool result", () => {
+    const task = createTestTask("workforce-emma-web-test022");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "Bash",
+      { command: "npm start" },
+      "Server running at http://localhost:8080\nReady.",
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeTruthy();
+
+    const payload = outputBroadcast!.payload as { output: { type: string; url: string } };
+    expect(payload.output.type).toBe("website");
+    expect(payload.output.url).toBe("http://localhost:8080");
+  });
+
+  it("detects file path from Bash result text", () => {
+    const task = createTestTask("workforce-emma-web-test023");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "bash",
+      { command: "cat > /tmp/output.csv" },
+      "Written to /tmp/output.csv",
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeTruthy();
+
+    const payload = outputBroadcast!.payload as { output: { type: string; filePath: string } };
+    expect(payload.output.type).toBe("spreadsheet");
+    expect(payload.output.filePath).toBe("/tmp/output.csv");
+  });
+
+  it("ignores non-write tools without URL output", () => {
+    const task = createTestTask("workforce-emma-web-test024");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "Read",
+      { file_path: "/tmp/something.txt" },
+      "file contents here",
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeUndefined();
+  });
+
+  it("detects relative file paths from Bash result", () => {
+    const task = createTestTask("workforce-emma-web-test026");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "Bash",
+      { command: "python3 create_ppt.py" },
+      "Created LifeWiki_Presentation.pptx",
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeTruthy();
+
+    const payload = outputBroadcast!.payload as { output: { type: string; title: string; filePath: string } };
+    expect(payload.output.type).toBe("presentation");
+    expect(payload.output.title).toBe("LifeWiki_Presentation.pptx");
+    expect(payload.output.filePath).toContain("LifeWiki_Presentation.pptx");
+  });
+
+  it("detects multiple file paths from Bash result", () => {
+    const task = createTestTask("workforce-emma-web-test027");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "bash",
+      { command: "python3 create_files.py" },
+      "Created slides.pptx\nCreated overview.html\nCreated notes.md",
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcasts = broadcasts.filter((b) => b.event === "workforce.task.output");
+    expect(outputBroadcasts).toHaveLength(3);
+
+    const types = outputBroadcasts.map((b) => (b.payload as { output: { type: string } }).output.type);
+    expect(types).toContain("presentation");
+    expect(types).toContain("website");
+    expect(types).toContain("document");
+  });
+
+  it("does not duplicate localhost URLs", () => {
+    const task = createTestTask("workforce-emma-web-test025");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+    const broadcast = (event: string, payload: unknown) => { broadcasts.push({ event, payload }); };
+
+    handleToolCall(task.id, "Bash", {}, "http://localhost:3000", broadcast);
+    const first = broadcasts.filter((b) => b.event === "workforce.task.output");
+    expect(first).toHaveLength(1);
+
+    broadcasts.length = 0;
+    handleToolCall(task.id, "Bash", {}, "http://localhost:3000", broadcast);
+    const second = broadcasts.filter((b) => b.event === "workforce.task.output");
+    expect(second).toHaveLength(0);
   });
 });
