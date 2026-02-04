@@ -16,7 +16,6 @@ struct FileArtifactView: View {
     @State private var fileExists = false
     @State private var pollTimer: Timer?
     @State private var refreshToken: UInt64 = 0
-    @State private var refreshTimer: Timer?
 
     var body: some View {
         Group {
@@ -29,21 +28,17 @@ struct FileArtifactView: View {
         .onAppear {
             self.checkFileExists()
             self.startPollingIfNeeded()
-            if self.isTaskRunning { self.startRefreshTimer() }
         }
         .onDisappear {
             self.stopPolling()
-            self.stopRefreshTimer()
         }
         .onChange(of: self.filePath) {
             self.checkFileExists()
             self.startPollingIfNeeded()
         }
         .onChange(of: self.isTaskRunning) {
-            if self.isTaskRunning {
-                self.startRefreshTimer()
-            } else {
-                self.stopRefreshTimer()
+            if !self.isTaskRunning {
+                // One-shot refresh when task completes to show final content
                 self.refreshToken &+= 1
             }
         }
@@ -85,20 +80,6 @@ struct FileArtifactView: View {
         self.pollTimer = nil
     }
 
-    private func startRefreshTimer() {
-        self.stopRefreshTimer()
-        self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
-            Task { @MainActor in
-                self.refreshToken &+= 1
-            }
-        }
-    }
-
-    private func stopRefreshTimer() {
-        self.refreshTimer?.invalidate()
-        self.refreshTimer = nil
-    }
-
     func revealInFinder() {
         guard self.fileExists else { return }
         NSWorkspace.shared.selectFile(self.filePath, inFileViewerRootedAtPath: "")
@@ -111,20 +92,46 @@ struct FileArtifactView: View {
     }
 }
 
-/// NSViewRepresentable wrapper for QLPreviewView with live refresh support
+/// NSViewRepresentable wrapper for QLPreviewView with live refresh support.
+/// Uses a Coordinator to track previous state and avoid unnecessary reloads
+/// that reset the scroll position.
 struct QuickLookPreviewView: NSViewRepresentable {
     let filePath: String
     var refreshToken: UInt64 = 0
 
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeNSView(context: Context) -> QLPreviewView {
         let previewView = QLPreviewView()
         previewView.autostarts = true
+        let url = URL(fileURLWithPath: self.filePath)
+        previewView.previewItem = url as QLPreviewItem
+        context.coordinator.lastFilePath = self.filePath
+        context.coordinator.lastRefreshToken = self.refreshToken
         return previewView
     }
 
     func updateNSView(_ previewView: QLPreviewView, context: Context) {
-        let url = URL(fileURLWithPath: self.filePath)
-        previewView.previewItem = url as QLPreviewItem
-        previewView.refreshPreviewItem()
+        let coordinator = context.coordinator
+
+        if self.filePath != coordinator.lastFilePath {
+            // File changed — load the new item
+            let url = URL(fileURLWithPath: self.filePath)
+            previewView.previewItem = url as QLPreviewItem
+            coordinator.lastFilePath = self.filePath
+            coordinator.lastRefreshToken = self.refreshToken
+        } else if self.refreshToken != coordinator.lastRefreshToken {
+            // Same file, explicit refresh requested (e.g. task finished generating)
+            previewView.refreshPreviewItem()
+            coordinator.lastRefreshToken = self.refreshToken
+        }
+        // Otherwise: no-op — preserves scroll position
+    }
+
+    class Coordinator {
+        var lastFilePath: String = ""
+        var lastRefreshToken: UInt64 = 0
     }
 }

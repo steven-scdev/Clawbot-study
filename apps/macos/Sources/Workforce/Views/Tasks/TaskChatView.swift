@@ -225,12 +225,9 @@ struct TaskChatView: View {
                                 }
                             }
                         }
-                        .frame(
-                            width: self.showArtifactPane && !self.taskOutputs.isEmpty
-                                ? geometry.size.width * (1.0 - self.artifactPaneRatio) - 4
-                                : nil
-                        )
-                        .frame(maxWidth: .infinity)
+                        .frame(width: self.showArtifactPane && !self.taskOutputs.isEmpty
+                            ? geometry.size.width * (1.0 - self.artifactPaneRatio) - 4
+                            : nil)
 
                         // Draggable divider (only when both panes visible)
                         if self.showArtifactPane, !self.taskOutputs.isEmpty {
@@ -273,13 +270,9 @@ struct TaskChatView: View {
                             latestActivityMessage: self.latestAgentActivity,
                             taskProgress: self.task?.progress ?? 0.0
                         )
-                        .frame(
-                            width: self.isArtifactExpanded
-                                ? nil
-                                : geometry.size.width * self.artifactPaneRatio - 4
-                        )
-                        .frame(maxWidth: .infinity)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                        .frame(width: self.isArtifactExpanded
+                            ? nil
+                            : geometry.size.width * self.artifactPaneRatio - 4)
                     }
                 }
             }
@@ -302,9 +295,7 @@ struct TaskChatView: View {
                     onSelect: { outputId in
                         self.closeFan()
                         self.selectedOutputId = outputId
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showArtifactPane = true
-                        }
+                        self.showArtifactPane = true
                     }
                 )
                 .zIndex(100)
@@ -319,9 +310,7 @@ struct TaskChatView: View {
         }
         .onChange(of: self.taskOutputs.count) { old, new in
             if old == 0, new > 0 {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    self.showArtifactPane = true
-                }
+                self.showArtifactPane = true
             }
         }
         .onAppear {
