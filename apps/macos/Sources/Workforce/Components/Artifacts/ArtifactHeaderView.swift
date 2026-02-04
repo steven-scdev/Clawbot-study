@@ -4,6 +4,7 @@ import SwiftUI
 struct ArtifactHeaderView: View {
     let currentOutput: TaskOutput?
     let allOutputs: [TaskOutput]
+    var isExpanded: Bool = false
     let onOutputSelect: (String) -> Void
     let onClose: () -> Void
     var onExpand: (() -> Void)?
@@ -28,13 +29,15 @@ struct ArtifactHeaderView: View {
 
             Spacer()
 
-            // Expand button
+            // Expand / Collapse button
             if let onExpand {
                 Button(action: onExpand) {
                     HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                        Image(systemName: self.isExpanded
+                              ? "arrow.down.right.and.arrow.up.left"
+                              : "arrow.up.left.and.arrow.down.right")
                             .font(.system(size: 10, weight: .semibold))
-                        Text("Expand")
+                        Text(self.isExpanded ? "Collapse" : "Expand")
                             .font(.system(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(.white)
@@ -44,7 +47,7 @@ struct ArtifactHeaderView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
                 .buttonStyle(.plain)
-                .help("Open in external app")
+                .help(self.isExpanded ? "Restore split view" : "Expand to full width")
             }
 
             // Close button
