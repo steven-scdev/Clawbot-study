@@ -9,7 +9,8 @@ import {
   type TaskManifest,
 } from "./src/task-store.js";
 import { handleAgentEvent, handleToolCall } from "./src/event-bridge.js";
-import { composeMind } from "./src/mind-composer.js";
+import { setupAgentWorkspaces } from "./src/agent-workspaces.js";
+import { buildWorkforceSessionKey, isWorkforceSession } from "./src/session-keys.js";
 import { fileURLToPath } from "url";
 
 type GatewayMethodOpts = {
@@ -63,6 +64,12 @@ const workforcePlugin = {
     let cachedBroadcast: ((event: string, payload: unknown) => void) | null = null;
     api.logger.info(`[workforce] Registered with ${config.employees.length} employees`);
 
+    // Write IDENTITY.md to each employee's agent workspace directory.
+    // Fire-and-forget: safe because task creation is user-initiated and happens later.
+    setupAgentWorkspaces(config.employees, mindsDir, api.logger).catch((err) => {
+      api.logger.error(`[workforce] Failed to set up agent workspaces: ${err}`);
+    });
+
     // ── workforce.employees.list ────────────────────────────────
     api.registerGatewayMethod("workforce.employees.list", async ({ respond, context }) => {
       if (!cachedBroadcast) { cachedBroadcast = context.broadcast; }
@@ -89,7 +96,7 @@ const workforcePlugin = {
           return;
         }
 
-        const sessionKey = `workforce-${employeeId}-${crypto.randomUUID().slice(0, 8)}`;
+        const sessionKey = buildWorkforceSessionKey(employeeId);
         const manifest = newTaskManifest({ employeeId, brief, sessionKey, attachments });
         createTask(manifest);
 
@@ -302,7 +309,7 @@ const workforcePlugin = {
 
     api.on("before_agent_start", async (_event, ctx) => {
       const sessionKey = ctx.sessionKey as string | undefined;
-      if (!sessionKey?.startsWith("workforce-")) { return; }
+      if (!isWorkforceSession(sessionKey, config.employees)) { return; }
       const task = getTaskBySessionKey(sessionKey);
       if (!task) { return; }
       updateTask(task.id, { status: "running", stage: "execute" });
@@ -312,21 +319,13 @@ const workforcePlugin = {
       } else {
         api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }
-
-      // Inject employee mind into agent prompt
-      const employee = config.employees.find((e) => e.id === task.employeeId);
-      if (employee) {
-        const mindContent = composeMind(employee.id, mindsDir);
-        if (mindContent) {
-          api.logger.info(`[workforce] Injecting mind for ${employee.id} (${mindContent.length} chars)`);
-          return { systemPrompt: mindContent };
-        }
-      }
+      // Identity is now provided via IDENTITY.md in the employee's agent workspace
+      // (written by setupAgentWorkspaces at gateway start). No runtime injection needed.
     });
 
     api.on("after_tool_call", async (event, ctx) => {
       const sessionKey = ctx.sessionKey as string | undefined;
-      if (!sessionKey?.startsWith("workforce-")) { return; }
+      if (!isWorkforceSession(sessionKey, config.employees)) { return; }
       const task = getTaskBySessionKey(sessionKey);
       if (!task) { return; }
       const toolName = (event.toolName as string) ?? "tool";
@@ -354,7 +353,7 @@ const workforcePlugin = {
 
     api.on("agent_end", async (_event, ctx) => {
       const sessionKey = ctx.sessionKey as string | undefined;
-      if (!sessionKey?.startsWith("workforce-")) { return; }
+      if (!isWorkforceSession(sessionKey, config.employees)) { return; }
       const task = getTaskBySessionKey(sessionKey);
       if (!task || task.status === "completed" || task.status === "cancelled") { return; }
       updateTask(task.id, {
@@ -380,7 +379,7 @@ const workforcePlugin = {
     api.on("agent_stream", async (event, ctx) => {
       const sessionKey = ctx.sessionKey as string | undefined;
       api.logger.debug(`[workforce] agent_stream: sessionKey=${sessionKey} stream=${event.stream} event=${event.event} hasBroadcast=${!!cachedBroadcast}`);
-      if (!sessionKey?.startsWith("workforce-")) { return; }
+      if (!isWorkforceSession(sessionKey, config.employees)) { return; }
 
       if (cachedBroadcast) {
         handleAgentEvent(

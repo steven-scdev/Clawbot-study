@@ -19,9 +19,9 @@ afterEach(() => {
   testTaskIds.length = 0;
 });
 
-function createTestTask(sessionKey: string) {
+function createTestTask(sessionKey: string, employeeId = "emma-web") {
   const m = newTaskManifest({
-    employeeId: "emma-web",
+    employeeId,
     brief: "Test task",
     sessionKey,
   });
@@ -43,14 +43,23 @@ describe("handleAgentEvent", () => {
   it("ignores events with no matching task", () => {
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
     handleAgentEvent(
-      { sessionKey: "workforce-unknown-xyz", stream: "tool", event: "tool_call", data: { name: "bash" } },
+      { sessionKey: "agent:unknown:workforce-xyz", stream: "tool", event: "tool_call", data: { name: "bash" } },
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+    expect(broadcasts).toHaveLength(0);
+  });
+
+  it("ignores old-format workforce session keys", () => {
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+    handleAgentEvent(
+      { sessionKey: "workforce-emma-web-abc12345", stream: "tool", event: "tool_call", data: { name: "bash" } },
       (event, payload) => { broadcasts.push({ event, payload }); },
     );
     expect(broadcasts).toHaveLength(0);
   });
 
   it("processes tool_call events into activities", () => {
-    const task = createTestTask("workforce-emma-web-test001");
+    const task = createTestTask("agent:emma-web:workforce-test001");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -70,7 +79,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("handles lifecycle complete", () => {
-    const task = createTestTask("workforce-emma-web-test002");
+    const task = createTestTask("agent:emma-web:workforce-test002");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -88,7 +97,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("handles lifecycle error", () => {
-    const task = createTestTask("workforce-emma-web-test003");
+    const task = createTestTask("agent:emma-web:workforce-test003");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -105,7 +114,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects file output from Write tool with nested args", () => {
-    const task = createTestTask("workforce-emma-web-test010");
+    const task = createTestTask("agent:emma-web:workforce-test010");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -132,7 +141,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects file output from write_file tool with top-level path", () => {
-    const task = createTestTask("workforce-emma-web-test011");
+    const task = createTestTask("agent:emma-web:workforce-test011");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -157,7 +166,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects localhost URL from bash tool result", () => {
-    const task = createTestTask("workforce-emma-web-test012");
+    const task = createTestTask("agent:emma-web:workforce-test012");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -182,7 +191,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects file output from assistant text with backtick filename", () => {
-    const task = createTestTask("workforce-emma-web-test013");
+    const task = createTestTask("agent:emma-web:workforce-test013");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -203,7 +212,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects absolute file path from assistant text", () => {
-    const task = createTestTask("workforce-emma-web-test014");
+    const task = createTestTask("agent:emma-web:workforce-test014");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -224,7 +233,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects localhost URL from assistant text", () => {
-    const task = createTestTask("workforce-emma-web-test015");
+    const task = createTestTask("agent:emma-web:workforce-test015");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -245,7 +254,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("does not duplicate assistant text outputs", () => {
-    const task = createTestTask("workforce-emma-web-test016");
+    const task = createTestTask("agent:emma-web:workforce-test016");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     // First mention
@@ -278,7 +287,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("classifies output types correctly", () => {
-    const task = createTestTask("workforce-emma-web-test017");
+    const task = createTestTask("agent:emma-web:workforce-test017");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     const testCases = [
@@ -311,7 +320,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects bold-formatted filenames from assistant text", () => {
-    const task = createTestTask("workforce-emma-web-test030");
+    const task = createTestTask("agent:emma-web:workforce-test030");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -332,7 +341,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects multiple outputs from a single assistant message", () => {
-    const task = createTestTask("workforce-emma-web-test031");
+    const task = createTestTask("agent:emma-web:workforce-test031");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -356,7 +365,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("deduplicates bold and backtick mentions of the same file", () => {
-    const task = createTestTask("workforce-emma-web-test032");
+    const task = createTestTask("agent:emma-web:workforce-test032");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -373,7 +382,7 @@ describe("handleAgentEvent", () => {
   });
 
   it("detects stage transitions from assistant text", () => {
-    const task = createTestTask("workforce-emma-web-test004");
+    const task = createTestTask("agent:emma-web:workforce-test004");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleAgentEvent(
@@ -391,7 +400,7 @@ describe("handleAgentEvent", () => {
 
 describe("handleToolCall (after_tool_call hook path)", () => {
   it("detects file output from Write tool params", () => {
-    const task = createTestTask("workforce-emma-web-test020");
+    const task = createTestTask("agent:emma-web:workforce-test020");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleToolCall(
@@ -417,7 +426,7 @@ describe("handleToolCall (after_tool_call hook path)", () => {
   });
 
   it("detects file output from write_file tool params", () => {
-    const task = createTestTask("workforce-emma-web-test021");
+    const task = createTestTask("agent:emma-web:workforce-test021");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleToolCall(
@@ -436,7 +445,7 @@ describe("handleToolCall (after_tool_call hook path)", () => {
   });
 
   it("detects localhost URL from Bash tool result", () => {
-    const task = createTestTask("workforce-emma-web-test022");
+    const task = createTestTask("agent:emma-web:workforce-test022");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleToolCall(
@@ -456,7 +465,7 @@ describe("handleToolCall (after_tool_call hook path)", () => {
   });
 
   it("detects file path from Bash result text", () => {
-    const task = createTestTask("workforce-emma-web-test023");
+    const task = createTestTask("agent:emma-web:workforce-test023");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleToolCall(
@@ -476,7 +485,7 @@ describe("handleToolCall (after_tool_call hook path)", () => {
   });
 
   it("ignores non-write tools without URL output", () => {
-    const task = createTestTask("workforce-emma-web-test024");
+    const task = createTestTask("agent:emma-web:workforce-test024");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleToolCall(
@@ -492,7 +501,7 @@ describe("handleToolCall (after_tool_call hook path)", () => {
   });
 
   it("detects relative file paths from Bash result", () => {
-    const task = createTestTask("workforce-emma-web-test026");
+    const task = createTestTask("agent:emma-web:workforce-test026");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleToolCall(
@@ -513,7 +522,7 @@ describe("handleToolCall (after_tool_call hook path)", () => {
   });
 
   it("detects multiple file paths from Bash result", () => {
-    const task = createTestTask("workforce-emma-web-test027");
+    const task = createTestTask("agent:emma-web:workforce-test027");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
 
     handleToolCall(
@@ -534,7 +543,7 @@ describe("handleToolCall (after_tool_call hook path)", () => {
   });
 
   it("does not duplicate localhost URLs", () => {
-    const task = createTestTask("workforce-emma-web-test025");
+    const task = createTestTask("agent:emma-web:workforce-test025");
     const broadcasts: Array<{ event: string; payload: unknown }> = [];
     const broadcast = (event: string, payload: unknown) => { broadcasts.push({ event, payload }); };
 
@@ -546,5 +555,26 @@ describe("handleToolCall (after_tool_call hook path)", () => {
     handleToolCall(task.id, "Bash", {}, "http://localhost:3000", broadcast);
     const second = broadcasts.filter((b) => b.event === "workforce.task.output");
     expect(second).toHaveLength(0);
+  });
+
+  it("resolves relative paths against employee workspace", () => {
+    const task = createTestTask("agent:emma-web:workforce-test040");
+    const broadcasts: Array<{ event: string; payload: unknown }> = [];
+
+    handleToolCall(
+      task.id,
+      "Write",
+      { file_path: "output.html" },
+      "File written",
+      (event, payload) => { broadcasts.push({ event, payload }); },
+    );
+
+    const outputBroadcast = broadcasts.find((b) => b.event === "workforce.task.output");
+    expect(outputBroadcast).toBeTruthy();
+
+    const payload = outputBroadcast!.payload as { output: { filePath: string } };
+    // Should resolve against workspace-emma-web, not workspace
+    expect(payload.output.filePath).toContain("workspace-emma-web");
+    expect(payload.output.filePath).toContain("output.html");
   });
 });

@@ -390,14 +390,7 @@ export async function runEmbeddedAttempt(
       skillsPrompt,
       tools,
     });
-    // Use a mutable closure so before_agent_start hooks can append to the
-    // system prompt via hookResult.systemPrompt (runs after session creation
-    // but before the first prompt() call).
-    let hookSystemPromptSuffix = "";
-    const systemPrompt = ((_base?: string) =>
-      hookSystemPromptSuffix
-        ? `${appendPrompt.trim()}\n\n${hookSystemPromptSuffix}`
-        : appendPrompt.trim()) as (defaultPrompt?: string) => string;
+    const systemPrompt = createSystemPromptOverride(appendPrompt);
 
     const sessionLock = await acquireSessionWriteLock({
       sessionFile: params.sessionFile,
@@ -726,13 +719,6 @@ export async function runEmbeddedAttempt(
                 messageProvider: params.messageProvider ?? undefined,
               },
             );
-            if (hookResult?.systemPrompt) {
-              hookSystemPromptSuffix = hookResult.systemPrompt;
-              log.debug(`hooks: injected system prompt (${hookResult.systemPrompt.length} chars)`);
-              // Reload the session so the mutable override function is re-evaluated
-              // and the agent's internal systemPrompt state is rebuilt.
-              await activeSession.reload();
-            }
             if (hookResult?.prependContext) {
               effectivePrompt = `${hookResult.prependContext}\n\n${params.prompt}`;
               log.debug(

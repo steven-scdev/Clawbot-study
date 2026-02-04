@@ -8,6 +8,7 @@ import {
   type TaskActivity,
   type TaskOutput,
 } from "./task-store.js";
+import { isWorkforceSessionKey, parseWorkforceSessionKey } from "./session-keys.js";
 
 type AgentEvent = {
   sessionKey?: string;
@@ -23,7 +24,7 @@ type Broadcaster = (event: string, payload: unknown) => void;
  * Called from the plugin's `onAgentEvent` listener.
  */
 export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void {
-  if (!evt.sessionKey?.startsWith("workforce-")) {
+  if (!isWorkforceSessionKey(evt.sessionKey)) {
     return;
   }
 
@@ -33,6 +34,7 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
   }
 
   const taskId = task.id;
+  const agentId = parseWorkforceSessionKey(evt.sessionKey)?.agentId;
 
   switch (evt.stream) {
     case "tool": {
@@ -41,7 +43,7 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
         appendActivity(taskId, activity);
         broadcast("workforce.task.activity", { taskId, activity });
       }
-      const output = detectOutput(evt);
+      const output = detectOutput(evt, agentId);
       if (output) {
         appendOutput(taskId, output);
         broadcast("workforce.task.output", { taskId, output });
@@ -64,7 +66,7 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
         broadcast("workforce.task.activity", { taskId, activity });
       }
       // Detect file outputs mentioned in assistant text as fallback
-      for (const output of detectOutputsFromText(text, task)) {
+      for (const output of detectOutputsFromText(text, task, agentId)) {
         appendOutput(taskId, output);
         broadcast("workforce.task.output", { taskId, output });
       }
@@ -166,7 +168,7 @@ const FILE_WRITE_TOOLS = new Set([
   "save_file", "write", "create",
 ]);
 
-function detectOutput(evt: AgentEvent): TaskOutput | null {
+function detectOutput(evt: AgentEvent, agentId?: string): TaskOutput | null {
   const toolName = (evt.data?.name as string) ?? "";
   const result = (evt.data?.result as string) ?? "";
   const args = (evt.data?.args ?? evt.data?.input) as Record<string, unknown> | string | undefined;
@@ -175,14 +177,14 @@ function detectOutput(evt: AgentEvent): TaskOutput | null {
   if (FILE_WRITE_TOOLS.has(toolName)) {
     const filePath = extractFilePath(evt.data, args);
     if (filePath) {
-      return buildFileOutput(filePath);
+      return buildFileOutput(filePath, agentId);
     }
   }
 
   // Detect first file path from bash/command tool results
   if (toolName === "bash" || toolName === "Bash" || toolName === "execute_command") {
     const firstPath = extractFilePathFromText(result);
-    if (firstPath) { return buildFileOutput(firstPath); }
+    if (firstPath) { return buildFileOutput(firstPath, agentId); }
   }
 
   // Detect localhost URLs from any tool result
@@ -242,14 +244,15 @@ function extractFilePathFromText(text: string): string | null {
   return extractFilePathsFromText(text)[0] ?? null;
 }
 
-function resolveFilePath(filePath: string): string {
+function resolveFilePath(filePath: string, agentId?: string): string {
   if (filePath.startsWith("/")) { return filePath; }
-  // Resolve relative paths against the default agent workspace
-  return join(homedir(), ".openclaw", "workspace", filePath);
+  // Resolve relative paths against the employee's agent workspace
+  const workspaceName = agentId && agentId !== "main" ? `workspace-${agentId}` : "workspace";
+  return join(homedir(), ".openclaw", workspaceName, filePath);
 }
 
-function buildFileOutput(filePath: string): TaskOutput {
-  const resolved = resolveFilePath(filePath);
+function buildFileOutput(filePath: string, agentId?: string): TaskOutput {
+  const resolved = resolveFilePath(filePath, agentId);
   const ext = resolved.split(".").pop()?.toLowerCase() ?? "";
   const type = classifyOutputType(ext);
   return {
@@ -274,13 +277,13 @@ function classifyOutputType(ext: string): TaskOutput["type"] {
 }
 
 /** Detect file outputs from assistant text — handles `backtick`, **bold**, and bare filenames */
-function detectOutputsFromText(text: string, task: TaskManifest): TaskOutput[] {
+function detectOutputsFromText(text: string, task: TaskManifest, agentId?: string): TaskOutput[] {
   if (!text) { return []; }
   const outputs: TaskOutput[] = [];
   const seen = new Set<string>();
 
   function addIfNew(filename: string): void {
-    const resolved = resolveFilePath(filename);
+    const resolved = resolveFilePath(filename, agentId);
     const key = resolved.toLowerCase();
     if (seen.has(key)) { return; }
     seen.add(key);
@@ -288,7 +291,7 @@ function detectOutputsFromText(text: string, task: TaskManifest): TaskOutput[] {
       o.filePath?.toLowerCase() === key || o.title?.toLowerCase() === filename.toLowerCase()
     );
     if (existing) { return; }
-    outputs.push(buildFileOutput(filename));
+    outputs.push(buildFileOutput(filename, agentId));
   }
 
   // Backtick-quoted: `filename.ext`
@@ -360,11 +363,15 @@ export function handleToolCall(
   result: string | undefined,
   broadcast: Broadcaster,
 ): void {
+  // Extract agentId from the task's session key for workspace-relative paths
+  const taskForAgent = getTask(taskId);
+  const agentId = taskForAgent ? parseWorkforceSessionKey(taskForAgent.sessionKey)?.agentId : undefined;
+
   // Detect file output from write tools
   if (FILE_WRITE_TOOLS.has(toolName)) {
     const filePath = extractFilePath(params, params);
     if (filePath) {
-      const output = buildFileOutput(filePath);
+      const output = buildFileOutput(filePath, agentId);
       appendOutput(taskId, output);
       broadcast("workforce.task.output", { taskId, output });
       return;
@@ -375,10 +382,10 @@ export function handleToolCall(
   if (result && (toolName === "bash" || toolName === "Bash" || toolName === "execute_command")) {
     const task = getTask(taskId);
     for (const filePath of extractFilePathsFromText(result)) {
-      const resolved = resolveFilePath(filePath);
+      const resolved = resolveFilePath(filePath, agentId);
       const existing = task?.outputs.find((o) => o.filePath?.toLowerCase() === resolved.toLowerCase());
       if (!existing) {
-        const output = buildFileOutput(filePath);
+        const output = buildFileOutput(filePath, agentId);
         appendOutput(taskId, output);
         broadcast("workforce.task.output", { taskId, output });
       }
