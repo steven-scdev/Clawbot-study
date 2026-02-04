@@ -40,6 +40,15 @@ const DEFAULT_EMPLOYEES: EmployeeConfig[] = [
     agentId: "sarah-research",
     capabilities: ["Full Stack Dev", "System Design", "Research"],
   },
+  {
+    id: "phil-ppt",
+    name: "Phil",
+    title: "Presentation Designer",
+    emoji: "\u{1F3AC}",
+    description: "Creates compelling PowerPoint presentations and pitch decks",
+    agentId: "phil-ppt",
+    capabilities: ["PowerPoint", "Pitch Decks", "Slide Design", "Storytelling"],
+  },
 ];
 
 export function resolveEmployees(pluginConfig: Record<string, unknown> | undefined): EmployeeConfig[] {

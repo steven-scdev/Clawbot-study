@@ -9,6 +9,8 @@ import {
   type TaskManifest,
 } from "./src/task-store.js";
 import { handleAgentEvent, handleToolCall } from "./src/event-bridge.js";
+import { composeMind } from "./src/mind-composer.js";
+import { fileURLToPath } from "url";
 
 type GatewayMethodOpts = {
   params: Record<string, unknown>;
@@ -56,6 +58,7 @@ const workforcePlugin = {
 
   register(api: PluginApi) {
     const config = parseConfig(api.pluginConfig);
+    const mindsDir = fileURLToPath(new URL("./minds", import.meta.url));
     // Captured from gateway method context so lifecycle hooks can broadcast events.
     let cachedBroadcast: ((event: string, payload: unknown) => void) | null = null;
     api.logger.info(`[workforce] Registered with ${config.employees.length} employees`);
@@ -308,6 +311,16 @@ const workforcePlugin = {
         cachedBroadcast("workforce.task.stage", { taskId: task.id, stage: "execute" });
       } else {
         api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
+      }
+
+      // Inject employee mind into agent prompt
+      const employee = config.employees.find((e) => e.id === task.employeeId);
+      if (employee) {
+        const mindContent = composeMind(employee.id, mindsDir);
+        if (mindContent) {
+          api.logger.info(`[workforce] Injecting mind for ${employee.id} (${mindContent.length} chars)`);
+          return { prependContext: mindContent };
+        }
       }
     });
 

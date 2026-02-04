@@ -4,13 +4,13 @@ import { resolveEmployees, buildEmployeeList, type EmployeeConfig } from "./empl
 describe("resolveEmployees", () => {
   it("returns default employees when no config", () => {
     const result = resolveEmployees(undefined);
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(4);
     expect(result[0].id).toBe("emma-web");
   });
 
   it("returns default employees when config has empty array", () => {
     const result = resolveEmployees({ employees: [] });
-    expect(result).toHaveLength(3);
+    expect(result).toHaveLength(4);
   });
 
   it("returns custom employees when provided", () => {
