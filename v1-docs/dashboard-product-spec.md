@@ -5,7 +5,7 @@
 ---
 
 ## Vision
-
+efs
 The Workforce app gives a solo founder or tiny team something they've never had: employees who work around the clock. The dashboard is the first thing users see when they open the app. It should answer the three questions every manager has when they check in on their team:
 
 1. **"What needs me right now?"** — Your employees are blocked waiting on you.
