@@ -39,13 +39,17 @@ struct ArtifactRendererView: View {
     /// Classify the output to determine the rendering surface
     /// URL present → web (WKWebView). HTML file path → web (file:// URL). Other files → QLPreviewView
     private func classifyArtifact(_ output: TaskOutput) -> ArtifactType {
+        print("[ArtifactRenderer] classifyArtifact id=\(output.id) type=\(output.type) title=\(output.title) filePath=\(output.filePath ?? "nil") url=\(output.url ?? "nil")")
         if let url = output.url, url.hasPrefix("http") {
+            print("[ArtifactRenderer] → .web (http URL)")
             return .web
         }
         // Route HTML files to WKWebView for proper rendering
         if let path = output.filePath, isHTMLFile(path) {
+            print("[ArtifactRenderer] → .web (HTML file: \(path))")
             return .web
         }
+        print("[ArtifactRenderer] → .file (filePath=\(output.filePath ?? "nil"))")
         return .file
     }
 

@@ -108,7 +108,9 @@ struct FileArtifactView: View {
     }
 
     private func checkFileExists() {
-        fileExists = FileManager.default.fileExists(atPath: filePath)
+        let exists = FileManager.default.fileExists(atPath: filePath)
+        print("[FileArtifactView] checkFileExists path=\(filePath) exists=\(exists)")
+        fileExists = exists
     }
 
     private func startPollingIfNeeded() {

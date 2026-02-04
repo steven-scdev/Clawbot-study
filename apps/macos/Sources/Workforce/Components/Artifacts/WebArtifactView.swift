@@ -146,14 +146,18 @@ struct WebViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        print("[WebArtifactView] updateNSView urlString=\(url)")
         guard let url = URL(string: url) else {
+            print("[WebArtifactView] Invalid URL: \(url)")
             loadError = "Invalid URL"
             return
         }
         if webView.url?.absoluteString != url.absoluteString {
             if url.isFileURL {
+                print("[WebArtifactView] Loading file URL: \(url.absoluteString) readAccess=\(url.deletingLastPathComponent().path)")
                 webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
             } else {
+                print("[WebArtifactView] Loading HTTP URL: \(url.absoluteString)")
                 webView.load(URLRequest(url: url))
             }
         }
