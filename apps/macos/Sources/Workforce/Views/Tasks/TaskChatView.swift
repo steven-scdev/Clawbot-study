@@ -24,6 +24,9 @@ struct TaskChatView: View {
     @State private var fanAnchorRect: CGRect = .zero
     /// Delays the dismiss-backdrop hit testing to prevent click bleed-through from the button.
     @State private var fanBackdropActive = false
+    @State private var isArtifactExpanded = false
+    @State private var artifactPaneRatio: CGFloat = 0.5
+    @State private var isApproved = false
 
     private var task: WorkforceTask? {
         self.taskService.tasks.first(where: { $0.id == self.taskId })
@@ -135,121 +138,149 @@ struct TaskChatView: View {
         ZStack {
             BlobBackgroundView(blobPhase: self.$blobPhase)
 
-            HStack(spacing: 0) {
-                // Left pane: Chat
-                VStack(spacing: 0) {
-                    ChatHeaderView(
-                        employee: self.employee,
-                        taskDescription: self.task?.description ?? "",
-                        taskStatus: self.task?.status ?? .running,
-                        onBack: self.onBack
-                    )
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    // Left pane: Chat — hidden when artifact is expanded
+                    if !self.isArtifactExpanded {
+                        VStack(spacing: 0) {
+                            ChatHeaderView(
+                                employee: self.employee,
+                                taskDescription: self.task?.description ?? "",
+                                taskStatus: self.task?.status ?? .running,
+                                onBack: self.onBack
+                            )
 
-                    ScrollViewReader { proxy in
-                        ScrollView {
-                            LazyVStack(spacing: 12) {
-                                ForEach(self.chatMessages) { msg in
-                                    ChatBubbleView(
-                                        message: msg,
-                                        employeeName: self.employee.name
-                                    )
-                                    .id(msg.id)
-                                }
-
-                                if !self.recentInternalActivities.isEmpty, self.isAgentWorking {
-                                    AgentThinkingStreamView(activities: self.recentInternalActivities)
-                                        .id("thinking-stream")
-                                }
-
-                                if self.showTypingIndicator {
-                                    ChatBubbleView.typingBubble(employeeName: self.employee.name)
-                                        .id("typing-indicator")
-                                }
-
-                                // Bottom spacer for input pill clearance
-                                Color.clear.frame(height: 100)
-                                    .id("bottom-anchor")
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.top, 20)
-                        }
-                        .scrollIndicators(.hidden)
-                        .onChange(of: self.chatMessages.count) { _, _ in
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                proxy.scrollTo("bottom-anchor", anchor: .bottom)
-                            }
-                        }
-                        .onChange(of: self.recentInternalActivities.count) { _, _ in
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                proxy.scrollTo("bottom-anchor", anchor: .bottom)
-                            }
-                        }
-                    }
-
-                    // Floating input pill + artifact stack button
-                    HStack(alignment: .bottom, spacing: 12) {
-                        ChatInputPill(
-                            text: self.$messageText,
-                            placeholder: "Send a message to \(self.employee.name)...",
-                            onSubmit: self.sendMessage
-                        )
-
-                        if !self.taskOutputs.isEmpty {
-                            ArtifactStackButton(
-                                outputCount: self.taskOutputs.count,
-                                onTap: {
-                                    guard self.fanAnchorRect != .zero else { return }
-                                    self.showFanOut.toggle()
-                                    if self.showFanOut {
-                                        // Enable backdrop hit testing after the click event resolves
-                                        self.fanBackdropActive = false
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                            self.fanBackdropActive = true
+                            ScrollViewReader { proxy in
+                                ScrollView {
+                                    LazyVStack(spacing: 12) {
+                                        ForEach(self.chatMessages) { msg in
+                                            ChatBubbleView(
+                                                message: msg,
+                                                employeeName: self.employee.name
+                                            )
+                                            .id(msg.id)
                                         }
+
+                                        if !self.recentInternalActivities.isEmpty, self.isAgentWorking {
+                                            AgentThinkingStreamView(activities: self.recentInternalActivities)
+                                                .id("thinking-stream")
+                                        }
+
+                                        if self.showTypingIndicator {
+                                            ChatBubbleView.typingBubble(employeeName: self.employee.name)
+                                                .id("typing-indicator")
+                                        }
+
+                                        // Bottom spacer for input pill clearance
+                                        Color.clear.frame(height: 100)
+                                            .id("bottom-anchor")
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.top, 20)
+                                }
+                                .scrollIndicators(.hidden)
+                                .onChange(of: self.chatMessages.count) { _, _ in
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        proxy.scrollTo("bottom-anchor", anchor: .bottom)
                                     }
                                 }
-                            )
-                            .background(
-                                GeometryReader { geo in
-                                    Color.clear.preference(
-                                        key: FanAnchorPreferenceKey.self,
-                                        value: geo.frame(in: .named("chatContainer"))
-                                    )
+                                .onChange(of: self.recentInternalActivities.count) { _, _ in
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                                    }
                                 }
-                            )
-                            .padding(.bottom, 24)
+                            }
+
+                            // Floating input pill + artifact stack button
+                            HStack(alignment: .bottom, spacing: 12) {
+                                ChatInputPill(
+                                    text: self.$messageText,
+                                    placeholder: "Send a message to \(self.employee.name)...",
+                                    onSubmit: self.sendMessage
+                                )
+
+                                if !self.taskOutputs.isEmpty {
+                                    ArtifactStackButton(
+                                        outputCount: self.taskOutputs.count,
+                                        onTap: {
+                                            guard self.fanAnchorRect != .zero else { return }
+                                            self.showFanOut.toggle()
+                                            if self.showFanOut {
+                                                self.fanBackdropActive = false
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                                    self.fanBackdropActive = true
+                                                }
+                                            }
+                                        }
+                                    )
+                                    .background(
+                                        GeometryReader { geo in
+                                            Color.clear.preference(
+                                                key: FanAnchorPreferenceKey.self,
+                                                value: geo.frame(in: .named("chatContainer"))
+                                            )
+                                        }
+                                    )
+                                    .padding(.bottom, 24)
+                                }
+                            }
+                        }
+                        .frame(
+                            width: self.showArtifactPane && !self.taskOutputs.isEmpty
+                                ? geometry.size.width * (1.0 - self.artifactPaneRatio) - 4
+                                : nil
+                        )
+                        .frame(maxWidth: .infinity)
+
+                        // Draggable divider (only when both panes visible)
+                        if self.showArtifactPane, !self.taskOutputs.isEmpty {
+                            PaneDivider(ratio: self.$artifactPaneRatio, totalWidth: geometry.size.width)
                         }
                     }
-                }
-                .frame(maxWidth: .infinity)
 
-                // Right pane: Artifacts (conditional)
-                if self.showArtifactPane, !self.taskOutputs.isEmpty {
-                    ArtifactPaneView(
-                        output: self.currentOutput,
-                        allOutputs: self.taskOutputs,
-                        showApproveButton: self.showApproveButton,
-                        isTaskRunning: self.isAgentWorking,
-                        taskService: self.taskService,
-                        taskId: self.taskId,
-                        onOutputSelect: { outputId in
-                            self.selectedOutputId = outputId
-                        },
-                        onClose: {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                self.showArtifactPane = false
-                            }
-                        },
-                        onApprove: {
-                            self.onBack()
-                        },
-                        employeeName: self.employee.name,
-                        avatarSystemName: self.employee.avatarSystemName,
-                        latestActivityMessage: self.latestAgentActivity,
-                        taskProgress: self.task?.progress ?? 0.0
-                    )
-                    .frame(maxWidth: .infinity)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                    // Right pane: Artifacts (conditional)
+                    if self.showArtifactPane, !self.taskOutputs.isEmpty {
+                        ArtifactPaneView(
+                            output: self.currentOutput,
+                            allOutputs: self.taskOutputs,
+                            showApproveButton: self.showApproveButton,
+                            isTaskRunning: self.isAgentWorking,
+                            taskService: self.taskService,
+                            taskId: self.taskId,
+                            onOutputSelect: { outputId in
+                                self.selectedOutputId = outputId
+                            },
+                            onClose: {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    self.isArtifactExpanded = false
+                                    self.showArtifactPane = false
+                                }
+                            },
+                            onApprove: {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    self.isApproved = true
+                                }
+                            },
+                            isExpanded: self.isArtifactExpanded,
+                            isApproved: self.isApproved,
+                            onExpand: {
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    self.isArtifactExpanded.toggle()
+                                }
+                            },
+                            employeeName: self.employee.name,
+                            avatarSystemName: self.employee.avatarSystemName,
+                            latestActivityMessage: self.latestAgentActivity,
+                            taskProgress: self.task?.progress ?? 0.0
+                        )
+                        .frame(
+                            width: self.isArtifactExpanded
+                                ? nil
+                                : geometry.size.width * self.artifactPaneRatio - 4
+                        )
+                        .frame(maxWidth: .infinity)
+                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
                 }
             }
 
@@ -312,5 +343,53 @@ struct TaskChatView: View {
         guard !text.isEmpty else { return }
         self.messageText = ""
         await self.taskService.sendFollowUp(taskId: self.taskId, message: text)
+    }
+}
+
+// MARK: - Draggable Pane Divider
+
+private struct PaneDivider: View {
+    @Binding var ratio: CGFloat
+    let totalWidth: CGFloat
+
+    @State private var isDragging = false
+    @GestureState private var dragStartRatio: CGFloat?
+
+    private let handleWidth: CGFloat = 8
+    private let minRatio: CGFloat = 0.25
+    private let maxRatio: CGFloat = 0.75
+
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .frame(width: self.handleWidth)
+            .contentShape(Rectangle())
+            .overlay(
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(Color.white.opacity(self.isDragging ? 0.6 : 0.3))
+                    .frame(width: 3, height: 40)
+            )
+            .onHover { hovering in
+                if hovering {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1)
+                    .updating(self.$dragStartRatio) { _, state, _ in
+                        if state == nil { state = self.ratio }
+                    }
+                    .onChanged { value in
+                        self.isDragging = true
+                        guard let startRatio = self.dragStartRatio else { return }
+                        let delta = -value.translation.width / self.totalWidth
+                        self.ratio = min(self.maxRatio, max(self.minRatio, startRatio + delta))
+                    }
+                    .onEnded { _ in
+                        self.isDragging = false
+                    }
+            )
     }
 }

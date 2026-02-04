@@ -1,53 +1,17 @@
 import SwiftUI
 
-/// Browser-chrome–style header for the artifact pane: muted dots, glass URL pill, Expand + close buttons.
+/// Browser-chrome–style header for the artifact pane: close button (left), glass URL pill (center), Expand button (right).
 struct ArtifactHeaderView: View {
     let currentOutput: TaskOutput?
     let allOutputs: [TaskOutput]
+    var isExpanded: Bool = false
     let onOutputSelect: (String) -> Void
     let onClose: () -> Void
     var onExpand: (() -> Void)?
 
     var body: some View {
         HStack(spacing: 10) {
-            // Decorative traffic-light dots (muted)
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { _ in
-                    Circle()
-                        .fill(Color(white: 0.55).opacity(0.4))
-                        .frame(width: 10, height: 10)
-                }
-            }
-            .accessibilityHidden(true)
-            .padding(.leading, 4)
-
-            Spacer()
-
-            // Glass URL pill
-            urlPill
-
-            Spacer()
-
-            // Expand button
-            if let onExpand {
-                Button(action: onExpand) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Expand")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.accentColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-                }
-                .buttonStyle(.plain)
-                .help("Open in external app")
-            }
-
-            // Close button
+            // Close button (top-left)
             Button(action: self.onClose) {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .semibold))
@@ -58,6 +22,34 @@ struct ArtifactHeaderView: View {
             }
             .buttonStyle(.plain)
             .help("Close artifact preview")
+
+            Spacer()
+
+            // Glass URL pill
+            urlPill
+
+            Spacer()
+
+            // Expand / Collapse button
+            if let onExpand {
+                Button(action: onExpand) {
+                    HStack(spacing: 4) {
+                        Image(systemName: self.isExpanded
+                              ? "arrow.down.right.and.arrow.up.left"
+                              : "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text(self.isExpanded ? "Collapse" : "Expand")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help(self.isExpanded ? "Restore split view" : "Expand to full width")
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
