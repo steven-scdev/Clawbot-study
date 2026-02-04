@@ -172,10 +172,10 @@ struct DashboardView: View {
 
     // MARK: - Navigation Handlers
 
-    /// Handle tap on attention item - mark as seen and navigate
+    /// Handle tap on attention item - mark as seen and navigate to chat
     private func handleAttentionTap(item: NeedsAttentionItem) {
         markTaskAsSeen(taskId: item.id)
-        onNavigate(item.taskState)
+        onNavigate(.chatting(employee: item.employee, taskId: item.id))
     }
 
     /// Handle tap on progress item - navigate to chat view
@@ -183,10 +183,10 @@ struct DashboardView: View {
         onNavigate(.chatting(employee: item.employee, taskId: item.id))
     }
 
-    /// Handle tap on completed item - mark as seen and navigate to review
+    /// Handle tap on completed item - mark as seen and navigate to chat
     private func handleCompletedTap(item: CompletedItem) {
         markTaskAsSeen(taskId: item.id)
-        onNavigate(.reviewing(taskId: item.id))
+        onNavigate(.chatting(employee: item.employee, taskId: item.id))
     }
 
     // MARK: - Helpers
