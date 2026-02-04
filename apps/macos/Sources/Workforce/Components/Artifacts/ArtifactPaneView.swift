@@ -5,6 +5,7 @@ struct ArtifactPaneView: View {
     let output: TaskOutput?
     let allOutputs: [TaskOutput]
     let showApproveButton: Bool
+    let isTaskRunning: Bool
     var taskService: TaskService
     let taskId: String
     let onOutputSelect: (String) -> Void
@@ -27,6 +28,7 @@ struct ArtifactPaneView: View {
             if let output {
                 ArtifactRendererView(
                     output: output,
+                    isTaskRunning: isTaskRunning,
                     taskService: taskService,
                     taskId: taskId
                 )

@@ -185,6 +185,7 @@ struct TaskChatView: View {
                         output: self.currentOutput,
                         allOutputs: self.taskOutputs,
                         showApproveButton: self.showApproveButton,
+                        isTaskRunning: self.isAgentWorking,
                         taskService: self.taskService,
                         taskId: self.taskId,
                         onOutputSelect: { outputId in

@@ -5,12 +5,14 @@ import WebKit
 struct WebArtifactView: View {
     let url: String
     let title: String
+    var isTaskRunning: Bool = false
 
     @State private var isLoading = true
     @State private var loadError: String?
     @State private var canGoBack = false
     @State private var canGoForward = false
     @State private var webViewCoordinator: WebViewCoordinator?
+    @State private var refreshTimer: Timer?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,6 +36,35 @@ struct WebArtifactView: View {
                 errorOverlay(error)
             }
         }
+        .onChange(of: isTaskRunning) {
+            if isTaskRunning {
+                startRefreshTimer()
+            } else {
+                stopRefreshTimer()
+                // One final reload to show completed state
+                webViewCoordinator?.reload()
+            }
+        }
+        .onAppear {
+            if isTaskRunning { startRefreshTimer() }
+        }
+        .onDisappear {
+            stopRefreshTimer()
+        }
+    }
+
+    private func startRefreshTimer() {
+        stopRefreshTimer()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            Task { @MainActor in
+                webViewCoordinator?.reload()
+            }
+        }
+    }
+
+    private func stopRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
     }
 
     private var browserChrome: some View {
@@ -120,7 +151,11 @@ struct WebViewRepresentable: NSViewRepresentable {
             return
         }
         if webView.url?.absoluteString != url.absoluteString {
-            webView.load(URLRequest(url: url))
+            if url.isFileURL {
+                webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+            } else {
+                webView.load(URLRequest(url: url))
+            }
         }
     }
 
