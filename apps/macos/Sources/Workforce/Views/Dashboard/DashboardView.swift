@@ -12,13 +12,13 @@ struct DashboardView: View {
     let employeeService: EmployeeService
     let onNavigate: (TaskFlowState) -> Void
 
-    @State private var blobPhase: CGFloat = 0
     @AppStorage("dashboard.seenTasks") private var seenTaskIdsString: String = ""
 
     var body: some View {
         ZStack {
-            // Animated blob background
-            BlobBackgroundView(blobPhase: $blobPhase)
+            // Warm beige background matching the app theme
+            Color(red: 0.91, green: 0.86, blue: 0.78)
+                .ignoresSafeArea()
 
             // Main content
             ScrollView {
@@ -51,12 +51,6 @@ struct DashboardView: View {
                     }
                 }
                 .padding(32)
-            }
-        }
-        .onAppear {
-            // Start blob animation
-            withAnimation(.linear(duration: 20).repeatForever(autoreverses: false)) {
-                blobPhase = 2 * .pi
             }
         }
     }
