@@ -15,6 +15,10 @@ struct TaskCreateResponse: Codable, Sendable {
 
 struct ClarificationPayload: Codable, Sendable, Equatable {
     let questions: [ClarificationQuestion]
+
+    init(questions: [ClarificationQuestion]) {
+        self.questions = questions
+    }
 }
 
 struct ClarificationQuestion: Identifiable, Codable, Sendable, Equatable {
@@ -71,6 +75,12 @@ struct PlanPayload: Codable, Sendable, Equatable {
     let summary: String
     let steps: [PlanStep]
     let estimatedTime: String?
+
+    init(summary: String, steps: [PlanStep], estimatedTime: String? = nil) {
+        self.summary = summary
+        self.steps = steps
+        self.estimatedTime = estimatedTime
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)

@@ -30,6 +30,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 struct SidebarView: View {
     @Binding var selection: SidebarItem?
     @Binding var isCollapsed: Bool
+    let taskService: TaskService
 
     private var sidebarWidth: CGFloat {
         self.isCollapsed ? 56 : 220
@@ -57,7 +58,8 @@ struct SidebarView: View {
                         icon: item.icon,
                         label: item.label,
                         isSelected: self.selection == item,
-                        isCollapsed: self.isCollapsed
+                        isCollapsed: self.isCollapsed,
+                        badgeCount: badgeCount(for: item)
                     ) {
                         self.selection = item
                     }
@@ -106,6 +108,15 @@ struct SidebarView: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color(white: 0.2))
             }
+        }
+    }
+
+    private func badgeCount(for item: SidebarItem) -> Int {
+        switch item {
+        case .dashboard:
+            return taskService.needsAttentionTasks.count
+        default:
+            return 0
         }
     }
 }

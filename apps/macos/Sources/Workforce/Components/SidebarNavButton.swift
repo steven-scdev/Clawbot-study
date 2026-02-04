@@ -5,13 +5,33 @@ struct SidebarNavButton: View {
     let label: String
     let isSelected: Bool
     var isCollapsed: Bool = false
+    var badgeCount: Int = 0
     let action: () -> Void
 
     @State private var isHovered = false
 
     var body: some View {
         Button(action: self.action) {
-            if self.isCollapsed {
+            ZStack(alignment: .topTrailing) {
+                buttonContent
+
+                // Badge overlay
+                if badgeCount > 0 {
+                    badgeView
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            self.isHovered = hovering
+        }
+        .animation(.easeInOut(duration: 0.15), value: self.isHovered)
+        .animation(.easeInOut(duration: 0.15), value: self.isSelected)
+    }
+
+    @ViewBuilder
+    private var buttonContent: some View {
+        if self.isCollapsed {
                 // Icon-only centered layout
                 Image(systemName: self.icon)
                     .font(.system(size: 16, weight: self.isSelected ? .semibold : .regular))
@@ -57,13 +77,16 @@ struct SidebarNavButton: View {
                         )
                 )
             }
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            self.isHovered = hovering
-        }
-        .animation(.easeInOut(duration: 0.15), value: self.isHovered)
-        .animation(.easeInOut(duration: 0.15), value: self.isSelected)
+    }
+
+    private var badgeView: some View {
+        Text("\(badgeCount)")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Capsule().fill(Color.red))
+            .offset(x: isCollapsed ? 10 : 8, y: isCollapsed ? -6 : -4)
     }
 
     private var backgroundColor: some ShapeStyle {

@@ -14,7 +14,8 @@ struct MainWindowView: View {
         HStack(spacing: 0) {
             SidebarView(
                 selection: self.$selection,
-                isCollapsed: self.$isSidebarCollapsed
+                isCollapsed: self.$isSidebarCollapsed,
+                taskService: self.taskService
             )
 
             ZStack(alignment: .leading) {
@@ -210,10 +211,12 @@ struct MainWindowView: View {
     private func detailView(for item: SidebarItem) -> some View {
         switch item {
         case .dashboard:
-            ContentPlaceholderView(
-                title: "Dashboard",
-                subtitle: "Team overview and activity feed coming soon",
-                icon: "square.grid.2x2"
+            DashboardView(
+                taskService: self.taskService,
+                employeeService: self.employeeService,
+                onNavigate: { newState in
+                    self.flowState = newState
+                }
             )
         case .employees:
             EmployeeGalleryView(

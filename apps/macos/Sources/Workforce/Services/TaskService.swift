@@ -38,6 +38,26 @@ final class TaskService {
         self.tasks.filter { $0.status == .failed }
     }
 
+    // MARK: - Dashboard Computed Properties
+
+    /// Dashboard-specific: tasks requiring user attention (clarify/plan/review stages or completed)
+    var needsAttentionTasks: [WorkforceTask] {
+        self.tasks.filter { task in
+            (task.status == .running && task.stage == .clarify) ||
+            (task.status == .running && task.stage == .plan) ||
+            (task.status == .running && task.stage == .review) ||
+            task.status == .completed
+        }
+    }
+
+    /// Dashboard-specific: actively executing tasks (execute stage or pending)
+    var inProgressTasks: [WorkforceTask] {
+        self.tasks.filter { task in
+            (task.status == .running && task.stage == .execute) ||
+            task.status == .pending
+        }
+    }
+
     // MARK: - Task CRUD
 
     func submitTask(employeeId: String, description: String, attachments: [String] = []) async throws -> WorkforceTask {
