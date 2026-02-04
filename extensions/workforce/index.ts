@@ -26,6 +26,20 @@ type PluginApi = {
   on: (hook: string, handler: (event: Record<string, unknown>, ctx: Record<string, unknown>) => Promise<unknown> | unknown) => void;
 };
 
+// Store broadcast on globalThis so it survives plugin re-registration.
+// When the agent session starts, the plugin is re-loaded with a fresh closure,
+// losing the closure-scoped cachedBroadcast. globalThis persists across re-loads
+// within the same Node process.
+const BROADCAST_KEY = Symbol.for("workforce.broadcast");
+
+function getSharedBroadcast(): ((event: string, payload: unknown) => void) | null {
+  return (globalThis as Record<symbol, unknown>)[BROADCAST_KEY] as ((event: string, payload: unknown) => void) | null ?? null;
+}
+
+function setSharedBroadcast(broadcast: (event: string, payload: unknown) => void): void {
+  (globalThis as Record<symbol, unknown>)[BROADCAST_KEY] = broadcast;
+}
+
 /** Convert internal TaskManifest to the wire shape consumed by the Swift frontend. */
 function taskToWire(t: TaskManifest) {
   return {
@@ -60,8 +74,6 @@ const workforcePlugin = {
   register(api: PluginApi) {
     const config = parseConfig(api.pluginConfig);
     const mindsDir = fileURLToPath(new URL("./minds", import.meta.url));
-    // Captured from gateway method context so lifecycle hooks can broadcast events.
-    let cachedBroadcast: ((event: string, payload: unknown) => void) | null = null;
     api.logger.info(`[workforce] Registered with ${config.employees.length} employees`);
 
     // Write IDENTITY.md to each employee's agent workspace directory.
@@ -72,7 +84,7 @@ const workforcePlugin = {
 
     // ── workforce.employees.list ────────────────────────────────
     api.registerGatewayMethod("workforce.employees.list", async ({ respond, context }) => {
-      if (!cachedBroadcast) { cachedBroadcast = context.broadcast; }
+      setSharedBroadcast(context.broadcast);
       try {
         const employees = buildEmployeeList(config.employees);
         respond(true, { employees });
@@ -84,7 +96,7 @@ const workforcePlugin = {
 
     // ── workforce.tasks.create ──────────────────────────────────
     api.registerGatewayMethod("workforce.tasks.create", async ({ params, respond, context }) => {
-      if (!cachedBroadcast) { cachedBroadcast = context.broadcast; }
+      setSharedBroadcast(context.broadcast);
       try {
         const employeeId = requireString(params, "employeeId");
         const brief = requireString(params, "brief");
@@ -206,7 +218,7 @@ const workforcePlugin = {
 
     // ── workforce.tasks.cancel ──────────────────────────────────
     api.registerGatewayMethod("workforce.tasks.cancel", async ({ params, respond, context }) => {
-      if (!cachedBroadcast) { cachedBroadcast = context.broadcast; }
+      setSharedBroadcast(context.broadcast);
       try {
         const taskId = requireString(params, "taskId");
         const task = getTask(taskId);
@@ -314,8 +326,9 @@ const workforcePlugin = {
       if (!task) { return; }
       updateTask(task.id, { status: "running", stage: "execute" });
       api.logger.info(`[workforce] Agent running: ${task.id}`);
-      if (cachedBroadcast) {
-        cachedBroadcast("workforce.task.stage", { taskId: task.id, stage: "execute" });
+      const broadcast = getSharedBroadcast();
+      if (broadcast) {
+        broadcast("workforce.task.stage", { taskId: task.id, stage: "execute" });
       } else {
         api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }
@@ -341,11 +354,12 @@ const workforcePlugin = {
       const activities = [...task.activities, activity].slice(-100);
       const progress = Math.min(1.0 - 1.0 / (1.0 + activities.length * 0.08), 0.95);
       updateTask(task.id, { activities, progress });
-      if (cachedBroadcast) {
-        cachedBroadcast("workforce.task.activity", { taskId: task.id, activity });
-        cachedBroadcast("workforce.task.progress", { taskId: task.id, progress });
+      const broadcast = getSharedBroadcast();
+      if (broadcast) {
+        broadcast("workforce.task.activity", { taskId: task.id, activity });
+        broadcast("workforce.task.progress", { taskId: task.id, progress });
         // Detect file/URL outputs from tool calls (this fires regardless of verbose level)
-        handleToolCall(task.id, toolName, params, result, cachedBroadcast);
+        handleToolCall(task.id, toolName, params, result, broadcast);
       } else {
         api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }
@@ -363,9 +377,10 @@ const workforcePlugin = {
         completedAt: new Date().toISOString(),
       });
       api.logger.info(`[workforce] Task completed: ${task.id}`);
-      if (cachedBroadcast) {
-        cachedBroadcast("workforce.task.completed", { taskId: task.id });
-        cachedBroadcast("workforce.employee.status", {
+      const broadcast = getSharedBroadcast();
+      if (broadcast) {
+        broadcast("workforce.task.completed", { taskId: task.id });
+        broadcast("workforce.employee.status", {
           employeeId: task.employeeId,
           status: "online",
           currentTaskId: null,
@@ -378,10 +393,10 @@ const workforcePlugin = {
     // Handle streaming agent events in real-time
     api.on("agent_stream", async (event, ctx) => {
       const sessionKey = ctx.sessionKey as string | undefined;
-      api.logger.debug(`[workforce] agent_stream: sessionKey=${sessionKey} stream=${event.stream} event=${event.event} hasBroadcast=${!!cachedBroadcast}`);
       if (!isWorkforceSession(sessionKey, config.employees)) { return; }
 
-      if (cachedBroadcast) {
+      const broadcast = getSharedBroadcast();
+      if (broadcast) {
         handleAgentEvent(
           {
             sessionKey,
@@ -389,7 +404,7 @@ const workforcePlugin = {
             event: event.event as string | undefined,
             data: event.data as Record<string, unknown> | undefined,
           },
-          cachedBroadcast
+          broadcast
         );
       } else {
         api.logger.warn(`[workforce] agent_stream hook called but no broadcast available (sessionKey=${sessionKey})`);
