@@ -519,7 +519,18 @@ final class TaskService {
             seenIDs.insert(remote.id)
             guard let existing = local[remote.id] else { return remote }
             var task = remote
-            if !existing.activities.isEmpty { task.activities = existing.activities }
+
+            // Merge activities: preserve local user messages and combine with server activities
+            if !existing.activities.isEmpty {
+                let serverIds = Set(remote.activities.map(\.id))
+                let localOnlyActivities = existing.activities.filter { !serverIds.contains($0.id) }
+
+                // Combine and sort by timestamp
+                var allActivities = remote.activities + localOnlyActivities
+                allActivities.sort { $0.timestamp < $1.timestamp }
+                task.activities = allActivities
+            }
+
             if !existing.outputs.isEmpty { task.outputs = existing.outputs }
             if existing.progress > task.progress { task.progress = existing.progress }
             if let msg = existing.errorMessage { task.errorMessage = msg }
@@ -537,9 +548,21 @@ final class TaskService {
             // Preserve locally-accumulated activities/outputs the RPC response lacks
             var merged = task
             let existing = self.tasks[index]
-            if !existing.activities.isEmpty && merged.activities.isEmpty {
-                merged.activities = existing.activities
+
+            // Merge activities: preserve local user messages and add new server activities
+            if !existing.activities.isEmpty {
+                // Create a set of server activity IDs for deduplication
+                let serverIds = Set(merged.activities.map(\.id))
+
+                // Keep all local activities that aren't in the server response
+                let localOnlyActivities = existing.activities.filter { !serverIds.contains($0.id) }
+
+                // Combine: server activities + local-only activities, sorted by timestamp
+                var allActivities = merged.activities + localOnlyActivities
+                allActivities.sort { $0.timestamp < $1.timestamp }
+                merged.activities = allActivities
             }
+
             if !existing.outputs.isEmpty && merged.outputs.isEmpty {
                 merged.outputs = existing.outputs
             }
