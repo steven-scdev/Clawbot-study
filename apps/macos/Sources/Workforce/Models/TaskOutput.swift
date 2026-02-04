@@ -30,7 +30,7 @@ struct TaskOutput: Identifiable, Codable, Sendable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = try container.decode(String.self, forKey: .id)
-        self.taskId = try container.decode(String.self, forKey: .taskId)
+        self.taskId = try container.decodeIfPresent(String.self, forKey: .taskId) ?? ""
         self.type = try container.decode(OutputType.self, forKey: .type)
         self.title = try container.decode(String.self, forKey: .title)
         self.filePath = try container.decodeIfPresent(String.self, forKey: .filePath)

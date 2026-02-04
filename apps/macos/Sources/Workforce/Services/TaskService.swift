@@ -218,7 +218,11 @@ final class TaskService {
             self.mergeFetchedTasks(response.tasks)
             self.logger.info("Loaded \(response.tasks.count) tasks from gateway")
         } catch {
-            self.logger.warning("workforce.tasks.list failed: \(error.localizedDescription)")
+            if let decodingError = error as? DecodingError {
+                self.logger.warning("workforce.tasks.list decode error: \(decodingError)")
+            } else {
+                self.logger.warning("workforce.tasks.list failed: \(error.localizedDescription)")
+            }
         }
     }
 

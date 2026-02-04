@@ -1,5 +1,12 @@
 import SwiftUI
 
+private struct FanAnchorPreferenceKey: PreferenceKey {
+    nonisolated(unsafe) static var defaultValue: CGRect = .zero
+    static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
+        value = nextValue()
+    }
+}
+
 /// Unified chat view that replaces the old TaskProgressView for chat-initiated tasks.
 /// Shows conversation bubbles, streaming agent thinking, and a floating input pill
 /// for follow-up messages — all on top of the animated blob background.
@@ -13,6 +20,10 @@ struct TaskChatView: View {
     @State private var blobPhase: CGFloat = 0
     @State private var showArtifactPane = false
     @State private var selectedOutputId: String?
+    @State private var showFanOut = false
+    @State private var fanAnchorRect: CGRect = .zero
+    /// Delays the dismiss-backdrop hit testing to prevent click bleed-through from the button.
+    @State private var fanBackdropActive = false
 
     private var task: WorkforceTask? {
         self.taskService.tasks.first(where: { $0.id == self.taskId })
@@ -62,7 +73,6 @@ struct TaskChatView: View {
                     timestamp: activity.timestamp
                 ))
             case .thinking, .toolCall, .toolResult, .unknown:
-                // Internal activities — shown in AgentThinkingStreamView, not as bubbles
                 continue
             }
         }
@@ -168,12 +178,40 @@ struct TaskChatView: View {
                         }
                     }
 
-                    // Floating input pill
-                    ChatInputPill(
-                        text: self.$messageText,
-                        placeholder: "Send a message to \(self.employee.name)...",
-                        onSubmit: self.sendMessage
-                    )
+                    // Floating input pill + artifact stack button
+                    HStack(alignment: .bottom, spacing: 12) {
+                        ChatInputPill(
+                            text: self.$messageText,
+                            placeholder: "Send a message to \(self.employee.name)...",
+                            onSubmit: self.sendMessage
+                        )
+
+                        if !self.taskOutputs.isEmpty {
+                            ArtifactStackButton(
+                                outputCount: self.taskOutputs.count,
+                                onTap: {
+                                    guard self.fanAnchorRect != .zero else { return }
+                                    self.showFanOut.toggle()
+                                    if self.showFanOut {
+                                        // Enable backdrop hit testing after the click event resolves
+                                        self.fanBackdropActive = false
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                            self.fanBackdropActive = true
+                                        }
+                                    }
+                                }
+                            )
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear.preference(
+                                        key: FanAnchorPreferenceKey.self,
+                                        value: geo.frame(in: .named("chatContainer"))
+                                    )
+                                }
+                            )
+                            .padding(.bottom, 24)
+                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
 
@@ -204,6 +242,39 @@ struct TaskChatView: View {
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
+
+            // Dismiss backdrop — separate from fan view, with delayed hit testing
+            if self.showFanOut {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { self.closeFan() }
+                    .allowsHitTesting(self.fanBackdropActive)
+                    .zIndex(99)
+            }
+
+            // Fan-out overlay
+            if self.showFanOut, self.fanAnchorRect != .zero {
+                ArtifactStackFanView(
+                    outputs: self.taskOutputs,
+                    anchorPoint: CGPoint(x: self.fanAnchorRect.midX, y: self.fanAnchorRect.minY),
+                    onSelect: { outputId in
+                        self.closeFan()
+                        self.selectedOutputId = outputId
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showArtifactPane = true
+                        }
+                    }
+                )
+                .zIndex(100)
+            }
+        }
+        .coordinateSpace(name: "chatContainer")
+        .onPreferenceChange(FanAnchorPreferenceKey.self) { rect in
+            self.fanAnchorRect = rect
+        }
+        .onChange(of: self.showArtifactPane) { _, isShowing in
+            if isShowing { self.closeFan() }
         }
         .onChange(of: self.taskOutputs.count) { old, new in
             if old == 0, new > 0 {
@@ -220,6 +291,11 @@ struct TaskChatView: View {
     }
 
     // MARK: - Actions
+
+    private func closeFan() {
+        self.showFanOut = false
+        self.fanBackdropActive = false
+    }
 
     private func sendMessage() async {
         let text = self.messageText.trimmingCharacters(in: .whitespacesAndNewlines)
