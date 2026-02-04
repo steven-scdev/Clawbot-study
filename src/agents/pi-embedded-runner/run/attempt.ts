@@ -729,6 +729,9 @@ export async function runEmbeddedAttempt(
             if (hookResult?.systemPrompt) {
               hookSystemPromptSuffix = hookResult.systemPrompt;
               log.debug(`hooks: injected system prompt (${hookResult.systemPrompt.length} chars)`);
+              // Reload the session so the mutable override function is re-evaluated
+              // and the agent's internal systemPrompt state is rebuilt.
+              await activeSession.reload();
             }
             if (hookResult?.prependContext) {
               effectivePrompt = `${hookResult.prependContext}\n\n${params.prompt}`;

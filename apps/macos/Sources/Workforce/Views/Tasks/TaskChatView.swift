@@ -161,14 +161,22 @@ struct TaskChatView: View {
                                             .id(msg.id)
                                         }
 
+                                        // Show thinking stream if we have recent internal activities
                                         if !self.recentInternalActivities.isEmpty, self.isAgentWorking {
                                             AgentThinkingStreamView(activities: self.recentInternalActivities)
                                                 .id("thinking-stream")
                                         }
 
+                                        // Show typing indicator when agent is working and last activity wasn't text
                                         if self.showTypingIndicator {
                                             ChatBubbleView.typingBubble(employeeName: self.employee.name)
                                                 .id("typing-indicator")
+                                        }
+
+                                        // Fallback: show "working" status when agent is active but silent
+                                        if self.isAgentWorking && self.recentInternalActivities.isEmpty && !self.showTypingIndicator {
+                                            WorkingStatusView(employeeName: self.employee.name)
+                                                .id("working-status")
                                         }
 
                                         // Bottom spacer for input pill clearance
@@ -185,6 +193,11 @@ struct TaskChatView: View {
                                     }
                                 }
                                 .onChange(of: self.recentInternalActivities.count) { _, _ in
+                                    withAnimation(.easeOut(duration: 0.3)) {
+                                        proxy.scrollTo("bottom-anchor", anchor: .bottom)
+                                    }
+                                }
+                                .onChange(of: self.isAgentWorking) { _, _ in
                                     withAnimation(.easeOut(duration: 0.3)) {
                                         proxy.scrollTo("bottom-anchor", anchor: .bottom)
                                     }
@@ -332,6 +345,65 @@ struct TaskChatView: View {
         guard !text.isEmpty else { return }
         self.messageText = ""
         await self.taskService.sendFollowUp(taskId: self.taskId, message: text)
+    }
+}
+
+// MARK: - Working Status View
+
+/// Shows a subtle status indicator when the agent is working but has no recent activity logs
+private struct WorkingStatusView: View {
+    let employeeName: String
+
+    @State private var dotCount = 0
+    @State private var timer: Timer?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("\(self.employeeName.uppercased()) IS WORKING")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(white: 0.5))
+                .tracking(1.2)
+
+            Text(self.dots)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(Color(white: 0.5))
+                .frame(width: 20, alignment: .leading)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.white.opacity(0.2))
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.15), lineWidth: 1)
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.trailing, 60)
+        .task {
+            await self.animateDots()
+        }
+        .onDisappear {
+            self.timer?.invalidate()
+        }
+    }
+
+    private var dots: String {
+        String(repeating: ".", count: self.dotCount)
+    }
+
+    private func animateDots() async {
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(500))
+            await MainActor.run {
+                withAnimation {
+                    self.dotCount = (self.dotCount + 1) % 4
+                }
+            }
+        }
     }
 }
 
