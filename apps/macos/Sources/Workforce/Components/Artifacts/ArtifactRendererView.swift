@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Determines which rendering surface to use for a given output
 enum ArtifactType {
-    case web    // URL-based content → WKWebView
-    case file   // File on disk → QLPreviewView
+    case web    // URL-based content -> WKWebView
+    case file   // File on disk -> QLPreviewView
 }
 
 /// Routes a TaskOutput to the correct rendering surface
@@ -15,41 +15,35 @@ struct ArtifactRendererView: View {
 
     var body: some View {
         Group {
-            switch classifyArtifact(output) {
+            switch self.classifyArtifact(self.output) {
             case .web:
                 WebArtifactView(
-                    url: webURL(for: output),
-                    title: output.title,
-                    isTaskRunning: isTaskRunning
+                    url: self.webURL(for: self.output),
+                    title: self.output.title,
+                    isTaskRunning: self.isTaskRunning
                 )
             case .file:
                 FileArtifactView(
-                    filePath: output.filePath ?? "",
-                    title: output.title,
-                    outputType: output.type,
-                    isTaskRunning: isTaskRunning,
-                    taskService: taskService,
-                    taskId: taskId,
-                    outputId: output.id
+                    filePath: self.output.filePath ?? "",
+                    title: self.output.title,
+                    outputType: self.output.type,
+                    isTaskRunning: self.isTaskRunning,
+                    taskService: self.taskService,
+                    taskId: self.taskId,
+                    outputId: self.output.id
                 )
             }
         }
     }
 
-    /// Classify the output to determine the rendering surface
-    /// URL present → web (WKWebView). HTML file path → web (file:// URL). Other files → QLPreviewView
+    /// URL present -> web (WKWebView). HTML file path -> web (file:// URL). Other files -> QLPreviewView.
     private func classifyArtifact(_ output: TaskOutput) -> ArtifactType {
-        print("[ArtifactRenderer] classifyArtifact id=\(output.id) type=\(output.type) title=\(output.title) filePath=\(output.filePath ?? "nil") url=\(output.url ?? "nil")")
         if let url = output.url, url.hasPrefix("http") {
-            print("[ArtifactRenderer] → .web (http URL)")
             return .web
         }
-        // Route HTML files to WKWebView for proper rendering
-        if let path = output.filePath, isHTMLFile(path) {
-            print("[ArtifactRenderer] → .web (HTML file: \(path))")
+        if let path = output.filePath, self.isHTMLFile(path) {
             return .web
         }
-        print("[ArtifactRenderer] → .file (filePath=\(output.filePath ?? "nil"))")
         return .file
     }
 
@@ -58,7 +52,6 @@ struct ArtifactRendererView: View {
         return ext == "html" || ext == "htm"
     }
 
-    /// Build a display URL: use the output's URL if present, or convert file path to file:// URL
     private func webURL(for output: TaskOutput) -> String {
         if let url = output.url, url.hasPrefix("http") {
             return url

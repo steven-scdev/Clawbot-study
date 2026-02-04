@@ -47,6 +47,20 @@ struct GlassSurface: ViewModifier {
     }
 }
 
+// MARK: - Inner Content Card (inset content area for artifact pane)
+
+struct InnerContentCard: ViewModifier {
+    var cornerRadius: CGFloat = 16
+
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: self.cornerRadius).fill(Color.white.opacity(0.8)))
+            .clipShape(RoundedRectangle(cornerRadius: self.cornerRadius))
+            .overlay(RoundedRectangle(cornerRadius: self.cornerRadius).stroke(Color.white.opacity(0.5), lineWidth: 1))
+            .shadow(color: Color.black.opacity(0.04), radius: 2, y: 1)
+    }
+}
+
 // MARK: - View Extensions
 
 extension View {
@@ -64,5 +78,9 @@ extension View {
 
     func glassSurface(cornerRadius: CGFloat = 0) -> some View {
         self.modifier(GlassSurface(cornerRadius: cornerRadius))
+    }
+
+    func innerContentCard(cornerRadius: CGFloat = 16) -> some View {
+        self.modifier(InnerContentCard(cornerRadius: cornerRadius))
     }
 }

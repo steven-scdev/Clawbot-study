@@ -1,7 +1,8 @@
 import SwiftUI
 import WebKit
 
-/// WKWebView wrapper for displaying web-based artifacts with browser chrome
+/// Bare WKWebView wrapper for displaying web-based artifacts.
+/// Browser chrome is now provided by ArtifactHeaderView at the pane level.
 struct WebArtifactView: View {
     let url: String
     let title: String
@@ -15,97 +16,60 @@ struct WebArtifactView: View {
     @State private var refreshTimer: Timer?
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Browser chrome toolbar
-            browserChrome
-
-            Divider()
-
-            // WebView container
+        ZStack {
             WebViewRepresentable(
-                url: url,
-                isLoading: $isLoading,
-                loadError: $loadError,
-                canGoBack: $canGoBack,
-                canGoForward: $canGoForward,
-                coordinator: $webViewCoordinator
+                url: self.url,
+                isLoading: self.$isLoading,
+                loadError: self.$loadError,
+                canGoBack: self.$canGoBack,
+                canGoForward: self.$canGoForward,
+                coordinator: self.$webViewCoordinator
             )
 
-            // Error overlay
-            if let error = loadError {
+            if let error = self.loadError {
                 errorOverlay(error)
             }
+
+            if self.isLoading {
+                VStack {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .controlSize(.small)
+                            .padding(8)
+                    }
+                    Spacer()
+                }
+            }
         }
-        .onChange(of: isTaskRunning) {
-            if isTaskRunning {
-                startRefreshTimer()
+        .onChange(of: self.isTaskRunning) {
+            if self.isTaskRunning {
+                self.startRefreshTimer()
             } else {
-                stopRefreshTimer()
-                // One final reload to show completed state
-                webViewCoordinator?.reload()
+                self.stopRefreshTimer()
+                self.webViewCoordinator?.reload()
             }
         }
         .onAppear {
-            if isTaskRunning { startRefreshTimer() }
+            if self.isTaskRunning { self.startRefreshTimer() }
         }
         .onDisappear {
-            stopRefreshTimer()
+            self.stopRefreshTimer()
         }
     }
 
     private func startRefreshTimer() {
-        stopRefreshTimer()
-        refreshTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+        self.stopRefreshTimer()
+        self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
             Task { @MainActor in
-                webViewCoordinator?.reload()
+                self.webViewCoordinator?.reload()
             }
         }
     }
 
     private func stopRefreshTimer() {
-        refreshTimer?.invalidate()
-        refreshTimer = nil
-    }
-
-    private var browserChrome: some View {
-        HStack(spacing: 12) {
-            Button {
-                webViewCoordinator?.goBack()
-            } label: {
-                Image(systemName: "chevron.left")
-            }
-            .disabled(!canGoBack)
-
-            Button {
-                webViewCoordinator?.goForward()
-            } label: {
-                Image(systemName: "chevron.right")
-            }
-            .disabled(!canGoForward)
-
-            Button {
-                webViewCoordinator?.reload()
-            } label: {
-                Image(systemName: isLoading ? "stop.fill" : "arrow.clockwise")
-            }
-
-            Text(url)
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color(white: 0.95))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
-
-            if isLoading {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        }
-        .padding(8)
-        .background(Color(white: 0.98))
+        self.refreshTimer?.invalidate()
+        self.refreshTimer = nil
     }
 
     private func errorOverlay(_ error: String) -> some View {
@@ -122,7 +86,6 @@ struct WebArtifactView: View {
                 .padding(.horizontal)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(white: 0.97))
     }
 }
 
@@ -146,18 +109,14 @@ struct WebViewRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
-        print("[WebArtifactView] updateNSView urlString=\(url)")
-        guard let url = URL(string: url) else {
-            print("[WebArtifactView] Invalid URL: \(url)")
-            loadError = "Invalid URL"
+        guard let url = URL(string: self.url) else {
+            self.loadError = "Invalid URL"
             return
         }
         if webView.url?.absoluteString != url.absoluteString {
             if url.isFileURL {
-                print("[WebArtifactView] Loading file URL: \(url.absoluteString) readAccess=\(url.deletingLastPathComponent().path)")
                 webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
             } else {
-                print("[WebArtifactView] Loading HTTP URL: \(url.absoluteString)")
                 webView.load(URLRequest(url: url))
             }
         }
@@ -165,10 +124,10 @@ struct WebViewRepresentable: NSViewRepresentable {
 
     func makeCoordinator() -> WebViewCoordinator {
         WebViewCoordinator(
-            isLoading: $isLoading,
-            loadError: $loadError,
-            canGoBack: $canGoBack,
-            canGoForward: $canGoForward
+            isLoading: self.$isLoading,
+            loadError: self.$loadError,
+            canGoBack: self.$canGoBack,
+            canGoForward: self.$canGoForward
         )
     }
 }
@@ -182,42 +141,42 @@ class WebViewCoordinator: NSObject, WKNavigationDelegate {
     weak var webView: WKWebView?
 
     init(isLoading: Binding<Bool>, loadError: Binding<String?>, canGoBack: Binding<Bool>, canGoForward: Binding<Bool>) {
-        _isLoading = isLoading
-        _loadError = loadError
-        _canGoBack = canGoBack
-        _canGoForward = canGoForward
+        self._isLoading = isLoading
+        self._loadError = loadError
+        self._canGoBack = canGoBack
+        self._canGoForward = canGoForward
     }
 
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        isLoading = true
-        loadError = nil
+        self.isLoading = true
+        self.loadError = nil
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        isLoading = false
-        canGoBack = webView.canGoBack
-        canGoForward = webView.canGoForward
+        self.isLoading = false
+        self.canGoBack = webView.canGoBack
+        self.canGoForward = webView.canGoForward
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        isLoading = false
-        loadError = error.localizedDescription
+        self.isLoading = false
+        self.loadError = error.localizedDescription
     }
 
     func goBack() {
-        webView?.goBack()
+        self.webView?.goBack()
     }
 
     func goForward() {
-        webView?.goForward()
+        self.webView?.goForward()
     }
 
     func reload() {
-        if isLoading {
-            webView?.stopLoading()
-            isLoading = false
+        if self.isLoading {
+            self.webView?.stopLoading()
+            self.isLoading = false
         } else {
-            webView?.reload()
+            self.webView?.reload()
         }
     }
 }

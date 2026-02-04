@@ -1,6 +1,8 @@
 import SwiftUI
+import AppKit
 
-/// Right-pane container for artifact preview with header, renderer, and approve button
+/// Frosted-glass artifact preview pane with browser chrome, inner content card,
+/// agent working status, and approve button.
 struct ArtifactPaneView: View {
     let output: TaskOutput?
     let allOutputs: [TaskOutput]
@@ -12,38 +14,67 @@ struct ArtifactPaneView: View {
     let onClose: () -> Void
     let onApprove: () -> Void
 
+    // Agent status (defaults for backward compatibility)
+    var employeeName: String = ""
+    var avatarSystemName: String = "person.circle.fill"
+    var latestActivityMessage: String = ""
+    var taskProgress: Double = 0.0
+
     var body: some View {
         VStack(spacing: 0) {
-            // Header with output selector and close button
+            // Glass browser chrome
             ArtifactHeaderView(
-                currentOutput: output,
-                allOutputs: allOutputs,
-                onOutputSelect: onOutputSelect,
-                onClose: onClose
+                currentOutput: self.output,
+                allOutputs: self.allOutputs,
+                onOutputSelect: self.onOutputSelect,
+                onClose: self.onClose,
+                onExpand: self.expandCurrentOutput
             )
 
-            Divider()
+            // Inner content card
+            Group {
+                if let output = self.output {
+                    ArtifactRendererView(
+                        output: output,
+                        isTaskRunning: self.isTaskRunning,
+                        taskService: self.taskService,
+                        taskId: self.taskId
+                    )
+                } else {
+                    emptyStatePlaceholder
+                }
+            }
+            .innerContentCard(cornerRadius: 16)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, self.isTaskRunning || self.showApproveButton ? 4 : 12)
 
-            // Artifact renderer or placeholder
-            if let output {
-                ArtifactRendererView(
-                    output: output,
-                    isTaskRunning: isTaskRunning,
-                    taskService: taskService,
-                    taskId: taskId
+            // Agent working card (visible only while running)
+            if self.isTaskRunning {
+                AgentWorkingCard(
+                    employeeName: self.employeeName,
+                    avatarSystemName: self.avatarSystemName,
+                    latestActivityMessage: self.latestActivityMessage,
+                    progress: self.taskProgress
                 )
-            } else {
-                emptyStatePlaceholder
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            // Approve button (only shown when task is completed)
-            if showApproveButton {
-                Divider()
+            // Approve button (visible only when completed)
+            if self.showApproveButton {
                 approveButton
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .glassCard(cornerRadius: 20)
+        .padding(8)
     }
+
+    // MARK: - Subviews
 
     private var emptyStatePlaceholder: some View {
         VStack(spacing: 12) {
@@ -59,28 +90,35 @@ struct ArtifactPaneView: View {
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(white: 0.97))
     }
 
     private var approveButton: some View {
-        Button {
-            onApprove()
-        } label: {
+        Button(action: self.onApprove) {
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 14))
                 Text("Looks Great")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 24)
             .padding(.vertical, 10)
             .background(Color.accentColor)
-            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .clipShape(Capsule())
+            .shadow(color: .blue.opacity(0.3), radius: 8, y: 3)
         }
         .buttonStyle(.plain)
-        .padding(.vertical, 12)
         .frame(maxWidth: .infinity)
-        .background(Color(white: 0.98))
+    }
+
+    // MARK: - Actions
+
+    private func expandCurrentOutput() {
+        guard let output = self.output else { return }
+        if let urlString = output.url, let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        } else if let path = output.filePath {
+            NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        }
     }
 }

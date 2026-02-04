@@ -123,6 +123,14 @@ struct TaskChatView: View {
         return task.status == .completed && !task.outputs.isEmpty
     }
 
+    /// Latest internal activity message for the agent working card
+    private var latestAgentActivity: String {
+        guard let task else { return "" }
+        return task.activities.last(where: {
+            $0.type == .thinking || $0.type == .toolCall
+        })?.message ?? ""
+    }
+
     var body: some View {
         ZStack {
             BlobBackgroundView(blobPhase: self.$blobPhase)
@@ -217,8 +225,6 @@ struct TaskChatView: View {
 
                 // Right pane: Artifacts (conditional)
                 if self.showArtifactPane, !self.taskOutputs.isEmpty {
-                    Divider()
-
                     ArtifactPaneView(
                         output: self.currentOutput,
                         allOutputs: self.taskOutputs,
@@ -236,7 +242,11 @@ struct TaskChatView: View {
                         },
                         onApprove: {
                             self.onBack()
-                        }
+                        },
+                        employeeName: self.employee.name,
+                        avatarSystemName: self.employee.avatarSystemName,
+                        latestActivityMessage: self.latestAgentActivity,
+                        taskProgress: self.task?.progress ?? 0.0
                     )
                     .frame(maxWidth: .infinity)
                     .transition(.move(edge: .trailing).combined(with: .opacity))

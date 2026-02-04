@@ -1,65 +1,129 @@
 import SwiftUI
 
-/// Header for artifact pane showing output selector and close button
+/// Browser-chrome–style header for the artifact pane: muted dots, glass URL pill, Expand + close buttons.
 struct ArtifactHeaderView: View {
     let currentOutput: TaskOutput?
     let allOutputs: [TaskOutput]
     let onOutputSelect: (String) -> Void
     let onClose: () -> Void
+    var onExpand: (() -> Void)?
 
     var body: some View {
-        HStack(spacing: 12) {
-            // Output type icon
-            if let output = currentOutput {
-                Image(systemName: output.type.icon)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.secondary)
+        HStack(spacing: 10) {
+            // Decorative traffic-light dots (muted)
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Circle()
+                        .fill(Color(white: 0.55).opacity(0.4))
+                        .frame(width: 10, height: 10)
+                }
             }
-
-            // Output picker (only shown when multiple outputs exist)
-            if allOutputs.count > 1 {
-                outputPicker
-            } else if let output = currentOutput {
-                // Single output - just show the title
-                Text(output.title)
-                    .font(.system(size: 13, weight: .medium))
-                    .lineLimit(1)
-            }
+            .accessibilityHidden(true)
+            .padding(.leading, 4)
 
             Spacer()
 
-            // Close button
-            Button {
-                onClose()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+            // Glass URL pill
+            urlPill
+
+            Spacer()
+
+            // Expand button
+            if let onExpand {
+                Button(action: onExpand) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.left.and.arrow.down.right")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Expand")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+                .help("Open in external app")
             }
-            .buttonStyle(.borderless)
+
+            // Close button
+            Button(action: self.onClose) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Color.white.opacity(0.3))
+                    .clipShape(Circle())
+            }
+            .buttonStyle(.plain)
             .help("Close artifact preview")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color(white: 0.98))
+        .background(Color.white.opacity(0.4))
+        .background(.ultraThinMaterial)
     }
 
-    private var outputPicker: some View {
-        Picker("", selection: Binding(
-            get: { currentOutput?.id ?? "" },
-            set: { newId in
-                onOutputSelect(newId)
-            }
-        )) {
-            ForEach(allOutputs, id: \.id) { output in
-                HStack {
-                    Image(systemName: output.type.icon)
-                    Text(output.title)
+    // MARK: - URL Pill
+
+    private var displayText: String {
+        guard let output = self.currentOutput else { return "No output" }
+        if let url = output.url, let host = URL(string: url)?.host {
+            return host
+        }
+        if let path = output.filePath {
+            return (path as NSString).lastPathComponent
+        }
+        return output.title
+    }
+
+    @ViewBuilder
+    private var urlPill: some View {
+        if self.allOutputs.count > 1 {
+            Menu {
+                ForEach(self.allOutputs, id: \.id) { output in
+                    Button {
+                        self.onOutputSelect(output.id)
+                    } label: {
+                        Label(output.title, systemImage: output.type.icon)
+                    }
                 }
-                .tag(output.id)
+            } label: {
+                pillContent(showChevron: true)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel("Switch output: \(self.displayText)")
+        } else {
+            pillContent(showChevron: false)
+        }
+    }
+
+    private func pillContent(showChevron: Bool) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 9))
+                .foregroundStyle(.secondary)
+
+            Text(self.displayText)
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+
+            if showChevron {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.tertiary)
             }
         }
-        .pickerStyle(.menu)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.5))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(Color.white.opacity(0.4), lineWidth: 1)
+        )
     }
 }
