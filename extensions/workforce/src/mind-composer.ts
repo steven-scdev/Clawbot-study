@@ -42,5 +42,37 @@ export function composeMind(employeeId: string, mindsDir: string): string {
     sections.push("## Your Working Principles\n", principles, "");
   }
 
+  // Add memory guidance so employees know how to use their memory
+  sections.push(buildMemoryGuidance());
+
   return sections.join("\n");
+}
+
+/**
+ * Build the memory guidance section that teaches employees how to use their
+ * persistent memory. This gets appended to every employee's IDENTITY.md.
+ */
+function buildMemoryGuidance(): string {
+  return `
+## Your Memory
+
+You have persistent memory that carries across tasks and sessions.
+
+**Before starting work:**
+- MEMORY.md is automatically loaded into your context — check it for relevant past work
+- Use \`memory_search\` to find related tasks, patterns, or user preferences
+- Reference past outputs when they inform current work
+
+**Your memory structure:**
+- \`MEMORY.md\` — Working memory with recent tasks and notes (always loaded)
+- \`memory/episodes/*.json\` — Detailed records of completed tasks
+- \`memory/*.md\` — Searchable via the memory_search tool
+
+**Memory behaviors:**
+- After each task completes, a summary is automatically added to MEMORY.md
+- When the user references past work ("remember when...", "like last time"), search memory first
+- You can add notes to MEMORY.md during tasks for future reference
+
+Your memory helps you provide continuity and build on past work rather than starting fresh each time.
+`;
 }

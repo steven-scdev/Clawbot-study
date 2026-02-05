@@ -11,6 +11,7 @@ import {
 import { handleAgentEvent, handleToolCall } from "./src/event-bridge.js";
 import { setupAgentWorkspaces } from "./src/agent-workspaces.js";
 import { buildWorkforceSessionKey, isWorkforceSession } from "./src/session-keys.js";
+import { writeTaskEpisode, updateEmployeeMemory } from "./src/memory-writer.js";
 import { fileURLToPath } from "url";
 
 type GatewayMethodOpts = {
@@ -227,6 +228,19 @@ const workforcePlugin = {
           return;
         }
         updateTask(taskId, { status: "cancelled", completedAt: new Date().toISOString() });
+
+        // Write memory for cancelled task
+        const cancelledTask = getTask(taskId);
+        if (cancelledTask) {
+          try {
+            writeTaskEpisode(cancelledTask);
+            updateEmployeeMemory(cancelledTask);
+            api.logger.info(`[workforce] Memory updated for cancelled task: ${taskId}`);
+          } catch (err) {
+            api.logger.warn(`[workforce] Failed to update memory for cancelled task: ${err}`);
+          }
+        }
+
         context.broadcast("workforce.employee.status", {
           employeeId: task.employeeId,
           status: "online",
@@ -377,6 +391,19 @@ const workforcePlugin = {
         completedAt: new Date().toISOString(),
       });
       api.logger.info(`[workforce] Task completed: ${task.id}`);
+
+      // Write memory after task completion
+      const completedTask = getTask(task.id);
+      if (completedTask) {
+        try {
+          writeTaskEpisode(completedTask);
+          updateEmployeeMemory(completedTask);
+          api.logger.info(`[workforce] Memory updated for ${completedTask.employeeId}`);
+        } catch (err) {
+          api.logger.warn(`[workforce] Failed to update memory: ${err}`);
+        }
+      }
+
       const broadcast = getSharedBroadcast();
       if (broadcast) {
         broadcast("workforce.task.completed", { taskId: task.id });

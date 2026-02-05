@@ -9,6 +9,7 @@ import {
   type TaskOutput,
 } from "./task-store.js";
 import { isWorkforceSessionKey, parseWorkforceSessionKey } from "./session-keys.js";
+import { writeTaskEpisode, updateEmployeeMemory } from "./memory-writer.js";
 
 type AgentEvent = {
   sessionKey?: string;
@@ -126,6 +127,16 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
           errorMessage,
           completedAt: new Date().toISOString(),
         });
+        // Write memory for failed task
+        const failedTask = getTask(taskId);
+        if (failedTask) {
+          try {
+            writeTaskEpisode(failedTask);
+            updateEmployeeMemory(failedTask);
+          } catch {
+            // Memory write failure should not block task failure handling
+          }
+        }
         broadcast("workforce.task.failed", { taskId, error: errorMessage, canRetry: true });
         broadcast("workforce.employee.status", {
           employeeId: task.employeeId,
