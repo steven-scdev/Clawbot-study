@@ -1,12 +1,13 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { resolveEmployeeWorkspaceDir } from "./agent-workspaces.js";
-import type { TaskManifest, TaskOutput } from "./task-store.js";
+import type { TaskManifest, TaskOutput, TaskActivity } from "./task-store.js";
 
 const MEMORY_FILENAME = "MEMORY.md";
 const EPISODES_DIR = "memory/episodes";
 const MAX_MEMORY_CHARS = 18_000; // Leave room for header (OpenClaw truncates at 20K)
 const MAX_RECENT_TASKS = 10;
+const MIN_BRIEF_LENGTH = 20; // Below this, we try to extract a better summary
 
 /**
  * Episode record stored in memory/episodes/{taskId}.json
@@ -34,10 +35,11 @@ export function writeTaskEpisode(task: TaskManifest): TaskEpisode {
   const episodesDir = join(workspaceDir, EPISODES_DIR);
   mkdirSync(episodesDir, { recursive: true });
 
+  const description = getTaskDescription(task);
   const episode: TaskEpisode = {
     taskId: task.id,
     employeeId: task.employeeId,
-    brief: task.brief.slice(0, 500), // Truncate long briefs
+    brief: description.slice(0, 500), // Use descriptive brief, truncated
     status: task.status as "completed" | "failed" | "cancelled",
     startedAt: task.createdAt,
     completedAt: task.completedAt ?? new Date().toISOString(),
@@ -123,12 +125,51 @@ function parseMemorySections(content: string): MemorySections {
 }
 
 /**
+ * Extract a meaningful summary from task activities when the brief is too short.
+ * Looks for the first substantial text activity from the assistant.
+ */
+function extractSummaryFromActivities(activities: TaskActivity[]): string | null {
+  // Find the first text activity with substantial content
+  for (const activity of activities) {
+    if (activity.type === "text" && activity.message.length > MIN_BRIEF_LENGTH) {
+      // Extract the first sentence or line as a summary
+      const text = activity.message.trim();
+      // Look for a good summary sentence (first sentence, up to 100 chars)
+      const firstSentence = text.split(/[.!?\n]/)[0]?.trim();
+      if (firstSentence && firstSentence.length >= MIN_BRIEF_LENGTH) {
+        return firstSentence.slice(0, 100);
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Get the best available task description.
+ * Uses the original brief if it's descriptive, otherwise extracts from activities.
+ */
+function getTaskDescription(task: TaskManifest): string {
+  const brief = task.brief.trim();
+
+  // If the brief is too short or generic, try to extract a better description
+  if (brief.length < MIN_BRIEF_LENGTH) {
+    const extracted = extractSummaryFromActivities(task.activities);
+    if (extracted) {
+      return extracted;
+    }
+  }
+
+  return brief;
+}
+
+/**
  * Format a single task entry for the Recent Tasks section.
  */
 function formatTaskEntry(task: TaskManifest): string {
   const date = formatDate(task.completedAt ?? task.updatedAt);
   const statusIcon = getStatusIcon(task.status);
-  const briefTruncated = task.brief.slice(0, 80).replace(/\n/g, " ");
+  const description = getTaskDescription(task);
+  const briefTruncated = description.slice(0, 80).replace(/\n/g, " ");
 
   const lines = [`### ${date} ${statusIcon} ${briefTruncated}`];
 

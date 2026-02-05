@@ -281,6 +281,64 @@ Always use TypeScript.
   });
 });
 
+describe("summary extraction from activities", () => {
+  it("uses brief when it is descriptive enough", () => {
+    const task = createTestTask({
+      brief: "Build a landing page with React",
+      activities: [
+        {
+          id: "act-1",
+          type: "text",
+          message: "I'll create a landing page using React with modern styling.",
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    });
+    updateEmployeeMemory(task);
+
+    const content = readFileSync(memoryPath, "utf-8");
+    expect(content).toContain("Build a landing page with React");
+  });
+
+  it("extracts summary from activities when brief is too short", () => {
+    const task = createTestTask({
+      brief: "hi",
+      activities: [
+        {
+          id: "act-1",
+          type: "text",
+          message: "I'll help you build an interior design app with a modern landing page.",
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    });
+    updateEmployeeMemory(task);
+
+    const content = readFileSync(memoryPath, "utf-8");
+    // Should extract from activities, not use "hi"
+    expect(content).toContain("interior design app");
+    expect(content).not.toMatch(/### .* \[done\] hi$/m);
+  });
+
+  it("falls back to brief when activities have no useful text", () => {
+    const task = createTestTask({
+      brief: "yo",
+      activities: [
+        {
+          id: "act-1",
+          type: "toolCall",
+          message: "Using read",
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    });
+    updateEmployeeMemory(task);
+
+    const content = readFileSync(memoryPath, "utf-8");
+    expect(content).toContain("[done] yo");
+  });
+});
+
 describe("memory truncation", () => {
   it("truncates MEMORY.md when content exceeds limit", () => {
     // Create many tasks with long briefs to exceed 18K limit

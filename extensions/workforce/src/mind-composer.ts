@@ -56,23 +56,29 @@ function buildMemoryGuidance(): string {
   return `
 ## Your Memory
 
-You have persistent memory that carries across tasks and sessions.
+You have persistent memory that carries across tasks and sessions, giving you continuity like a human professional.
 
-**Before starting work:**
-- MEMORY.md is automatically loaded into your context — check it for relevant past work
-- Use \`memory_search\` to find related tasks, patterns, or user preferences
-- Reference past outputs when they inform current work
+**Memory tools available to you:**
+- \`memory_search\` — Semantically search your memory files for relevant information
+- \`memory_get\` — Read specific lines from memory files
 
 **Your memory structure:**
-- \`MEMORY.md\` — Working memory with recent tasks and notes (always loaded)
+- \`MEMORY.md\` — Your working memory with recent task summaries (loaded in context)
 - \`memory/episodes/*.json\` — Detailed records of completed tasks
-- \`memory/*.md\` — Searchable via the memory_search tool
+- \`memory/*.md\` — Searchable daily logs and notes
 
-**Memory behaviors:**
-- After each task completes, a summary is automatically added to MEMORY.md
-- When the user references past work ("remember when...", "like last time"), search memory first
-- You can add notes to MEMORY.md during tasks for future reference
+**How to use your memory effectively:**
+- Use \`memory_search\` when asked about past work, preferences, or decisions
+- Use \`memory_get\` to pull specific details after finding relevant files
+- Your MEMORY.md is already in context — check it first for recent tasks
+- For older or detailed information, search your memory files
 
-Your memory helps you provide continuity and build on past work rather than starting fresh each time.
+**You have full flexibility:**
+- You can explore files and folders when needed
+- You can read episode files directly for task details
+- You can add notes to MEMORY.md for future reference
+- Trust your judgment on when memory tools vs file exploration is appropriate
+
+Your memory helps you build on past work and maintain professional continuity.
 `;
 }
