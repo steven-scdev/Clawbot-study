@@ -23,6 +23,9 @@ type Broadcaster = (event: string, payload: unknown) => void;
 /**
  * Maps raw agent events into structured `workforce.task.*` events.
  * Called from the plugin's `onAgentEvent` listener.
+ *
+ * NOTE: Output detection has been moved to the explicit `workforce.output.present`
+ * gateway method. Agents must now call `preview.present(path, title)` to show outputs.
  */
 export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void {
   if (!isWorkforceSessionKey(evt.sessionKey)) {
@@ -35,7 +38,6 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
   }
 
   const taskId = task.id;
-  const agentId = parseWorkforceSessionKey(evt.sessionKey)?.agentId;
 
   switch (evt.stream) {
     case "tool": {
@@ -44,11 +46,7 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
         appendActivity(taskId, activity);
         broadcast("workforce.task.activity", { taskId, activity });
       }
-      const output = detectOutput(evt, agentId);
-      if (output) {
-        appendOutput(taskId, output);
-        broadcast("workforce.task.output", { taskId, output });
-      }
+      // Output detection removed — agents must explicitly call preview.present()
       const progress = computeProgress(taskId);
       updateTask(taskId, { progress });
       broadcast("workforce.task.progress", { taskId, progress });
@@ -66,27 +64,7 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
         appendActivity(taskId, activity);
         broadcast("workforce.task.activity", { taskId, activity });
       }
-      // Detect file outputs mentioned in assistant text as fallback
-      for (const output of detectOutputsFromText(text, task, agentId)) {
-        appendOutput(taskId, output);
-        broadcast("workforce.task.output", { taskId, output });
-      }
-      // Detect localhost URLs in assistant text
-      const urlFromText = text.match(/https?:\/\/localhost:\d+/);
-      if (urlFromText) {
-        const urlOutput: TaskOutput = {
-          id: `out-${crypto.randomUUID().slice(0, 8)}`,
-          type: "website",
-          title: "Preview",
-          url: urlFromText[0],
-          createdAt: new Date().toISOString(),
-        };
-        const existing = task.outputs.find((o) => o.url === urlOutput.url);
-        if (!existing) {
-          appendOutput(taskId, urlOutput);
-          broadcast("workforce.task.output", { taskId, output: urlOutput });
-        }
-      }
+      // Output detection removed — agents must explicitly call preview.present()
       const newStage = detectStageFromText(text, task.stage);
       if (newStage && newStage !== task.stage) {
         updateTask(taskId, { stage: newStage });
@@ -173,88 +151,6 @@ function buildToolActivity(evt: AgentEvent): TaskActivity | null {
   return null;
 }
 
-const FILE_WRITE_TOOLS = new Set([
-  "write_file", "Write", "create_file",
-  "str_replace_editor", "file_editor", "edit_file",
-  "save_file", "write", "create",
-]);
-
-function detectOutput(evt: AgentEvent, agentId?: string): TaskOutput | null {
-  const toolName = (evt.data?.name as string) ?? "";
-  const result = (evt.data?.result as string) ?? "";
-  const args = (evt.data?.args ?? evt.data?.input) as Record<string, unknown> | string | undefined;
-
-  // Extract file path from tool args (nested) or top-level data
-  if (FILE_WRITE_TOOLS.has(toolName)) {
-    const filePath = extractFilePath(evt.data, args);
-    if (filePath) {
-      return buildFileOutput(filePath, agentId);
-    }
-  }
-
-  // Detect first file path from bash/command tool results
-  if (toolName === "bash" || toolName === "Bash" || toolName === "execute_command") {
-    const firstPath = extractFilePathFromText(result);
-    if (firstPath) { return buildFileOutput(firstPath, agentId); }
-  }
-
-  // Detect localhost URLs from any tool result
-  const urlMatch = result.match(/https?:\/\/localhost:\d+/);
-  if (urlMatch) {
-    return {
-      id: `out-${crypto.randomUUID().slice(0, 8)}`,
-      type: "website",
-      title: "Preview",
-      url: urlMatch[0],
-      createdAt: new Date().toISOString(),
-    };
-  }
-
-  return null;
-}
-
-function extractFilePath(data: Record<string, unknown> | undefined, args: Record<string, unknown> | string | undefined): string | null {
-  // Check top-level data fields
-  for (const key of ["path", "filePath", "file_path", "filename"]) {
-    if (typeof data?.[key] === "string") { return data[key] as string; }
-  }
-  // Check nested args object
-  if (args && typeof args === "object") {
-    for (const key of ["path", "filePath", "file_path", "filename"]) {
-      if (typeof (args as Record<string, unknown>)[key] === "string") { return (args as Record<string, unknown>)[key] as string; }
-    }
-  }
-  // Check stringified args for file path
-  if (typeof args === "string") {
-    const match = args.match(/(?:path|filePath|file_path)["']?\s*[:=]\s*["']([^"']+)/);
-    if (match) { return match[1]; }
-  }
-  return null;
-}
-
-const KNOWN_EXT = String.raw`(?:html?|css|js|ts|jsx|tsx|py|md|txt|pdf|png|jpg|svg|csv|json|xml|yaml|yml|sh|rb|go|rs|swift|java|c|cpp|pptx?|xlsx?|mp[34]|mov|wav)`;
-
-/** Extract all file paths from text — both absolute and relative with known extensions */
-function extractFilePathsFromText(text: string): string[] {
-  if (!text) { return []; }
-  const paths: string[] = [];
-  const seen = new Set<string>();
-  // Absolute paths
-  for (const m of text.matchAll(new RegExp(String.raw`(\/[\w./-]+\.${KNOWN_EXT})\b`, "gi"))) {
-    if (!seen.has(m[1].toLowerCase())) { seen.add(m[1].toLowerCase()); paths.push(m[1]); }
-  }
-  // Relative filenames (word chars, hyphens, underscores before extension)
-  for (const m of text.matchAll(new RegExp(String.raw`(?:^|[\s"'=:])([A-Za-z][\w.-]*\.${KNOWN_EXT})\b`, "gim"))) {
-    if (!seen.has(m[1].toLowerCase())) { seen.add(m[1].toLowerCase()); paths.push(m[1]); }
-  }
-  return paths;
-}
-
-/** Extract a single file path from text (backward-compat helper) */
-function extractFilePathFromText(text: string): string | null {
-  return extractFilePathsFromText(text)[0] ?? null;
-}
-
 function resolveFilePath(filePath: string, agentId?: string): string {
   if (filePath.startsWith("/")) { return filePath; }
   // Resolve relative paths against the employee's agent workspace
@@ -285,40 +181,6 @@ function classifyOutputType(ext: string): TaskOutput["type"] {
   if (["mp3", "wav", "aac", "ogg", "flac", "m4a"].includes(ext)) { return "audio"; }
   if (["swift", "ts", "js", "py", "go", "rs", "java", "c", "cpp", "rb"].includes(ext)) { return "code"; }
   return "file";
-}
-
-/** Detect file outputs from assistant text — handles `backtick`, **bold**, and bare filenames */
-function detectOutputsFromText(text: string, task: TaskManifest, agentId?: string): TaskOutput[] {
-  if (!text) { return []; }
-  const outputs: TaskOutput[] = [];
-  const seen = new Set<string>();
-
-  function addIfNew(filename: string): void {
-    const resolved = resolveFilePath(filename, agentId);
-    const key = resolved.toLowerCase();
-    if (seen.has(key)) { return; }
-    seen.add(key);
-    const existing = task.outputs.find((o) =>
-      o.filePath?.toLowerCase() === key || o.title?.toLowerCase() === filename.toLowerCase()
-    );
-    if (existing) { return; }
-    outputs.push(buildFileOutput(filename, agentId));
-  }
-
-  // Backtick-quoted: `filename.ext`
-  for (const m of text.matchAll(new RegExp(String.raw`\x60([^\x60]+\.${KNOWN_EXT})\x60`, "gi"))) {
-    addIfNew(m[1]);
-  }
-  // Bold markdown: **filename.ext**
-  for (const m of text.matchAll(new RegExp(String.raw`\*\*([^*]+\.${KNOWN_EXT})\*\*`, "gi"))) {
-    addIfNew(m[1]);
-  }
-  // Absolute paths and relative filenames
-  for (const p of extractFilePathsFromText(text)) {
-    addIfNew(p);
-  }
-
-  return outputs;
 }
 
 const STAGE_ORDER = ["clarify", "plan", "execute", "review", "deliver"] as const;
@@ -356,70 +218,33 @@ function appendActivity(taskId: string, activity: TaskActivity): void {
   updateTask(taskId, { activities });
 }
 
-function appendOutput(taskId: string, output: TaskOutput): void {
+export function appendOutput(taskId: string, output: TaskOutput): void {
   const current = getTask(taskId);
   if (!current) { return; }
   updateTask(taskId, { outputs: [...current.outputs, output] });
 }
 
 /**
- * Detect outputs from the `after_tool_call` plugin hook.
- * This fires regardless of verbose level, unlike `agent_stream` tool events
- * which are gated by `shouldEmitToolEvents`.
+ * Create a TaskOutput from a file path.
+ * Resolves relative paths against the agent's workspace directory.
  */
-export function handleToolCall(
-  taskId: string,
-  toolName: string,
-  params: Record<string, unknown>,
-  result: string | undefined,
-  broadcast: Broadcaster,
-): void {
-  // Extract agentId from the task's session key for workspace-relative paths
-  const taskForAgent = getTask(taskId);
-  const agentId = taskForAgent ? parseWorkforceSessionKey(taskForAgent.sessionKey)?.agentId : undefined;
-
-  // Detect file output from write tools
-  if (FILE_WRITE_TOOLS.has(toolName)) {
-    const filePath = extractFilePath(params, params);
-    if (filePath) {
-      const output = buildFileOutput(filePath, agentId);
-      appendOutput(taskId, output);
-      broadcast("workforce.task.output", { taskId, output });
-      return;
-    }
+export function createFileOutput(filePath: string, agentId?: string, title?: string): TaskOutput {
+  const output = buildFileOutput(filePath, agentId);
+  if (title) {
+    output.title = title;
   }
+  return output;
+}
 
-  // Detect file paths from bash/command tool results
-  if (result && (toolName === "bash" || toolName === "Bash" || toolName === "execute_command")) {
-    const task = getTask(taskId);
-    for (const filePath of extractFilePathsFromText(result)) {
-      const resolved = resolveFilePath(filePath, agentId);
-      const existing = task?.outputs.find((o) => o.filePath?.toLowerCase() === resolved.toLowerCase());
-      if (!existing) {
-        const output = buildFileOutput(filePath, agentId);
-        appendOutput(taskId, output);
-        broadcast("workforce.task.output", { taskId, output });
-      }
-    }
-  }
-
-  // Detect localhost URLs from any tool result
-  if (result) {
-    const urlMatch = result.match(/https?:\/\/localhost:\d+/);
-    if (urlMatch) {
-      const task = getTask(taskId);
-      const existing = task?.outputs.find((o) => o.url === urlMatch[0]);
-      if (!existing) {
-        const output: TaskOutput = {
-          id: `out-${crypto.randomUUID().slice(0, 8)}`,
-          type: "website",
-          title: "Preview",
-          url: urlMatch[0],
-          createdAt: new Date().toISOString(),
-        };
-        appendOutput(taskId, output);
-        broadcast("workforce.task.output", { taskId, output });
-      }
-    }
-  }
+/**
+ * Create a TaskOutput from a URL.
+ */
+export function createUrlOutput(url: string, title?: string): TaskOutput {
+  return {
+    id: `out-${crypto.randomUUID().slice(0, 8)}`,
+    type: "website",
+    title: title ?? "Preview",
+    url,
+    createdAt: new Date().toISOString(),
+  };
 }

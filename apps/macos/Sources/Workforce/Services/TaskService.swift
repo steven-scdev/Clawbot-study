@@ -7,6 +7,22 @@ import OpenClawProtocol
 /// the OpenClawKit.AnyCodable used for building RPC request params.
 private typealias ProtoAnyCodable = OpenClawProtocol.AnyCodable
 
+// MARK: - Notification Names for Preview Panel
+
+extension Notification.Name {
+    /// Posted when an agent explicitly presents an output in the preview panel.
+    /// userInfo: ["taskId": String, "outputId": String]
+    static let presentOutput = Notification.Name("ai.openclaw.workforce.presentOutput")
+
+    /// Posted when an agent requests the preview panel to refresh.
+    /// userInfo: ["taskId": String]
+    static let refreshOutput = Notification.Name("ai.openclaw.workforce.refreshOutput")
+
+    /// Internal notification for artifact views to refresh their content.
+    /// userInfo: ["taskId": String]
+    static let artifactRefreshRequested = Notification.Name("ai.openclaw.workforce.artifactRefreshRequested")
+}
+
 /// Manages task lifecycle via the workforce plugin's gateway methods.
 /// Falls back to local-only operation when the plugin is unavailable.
 @Observable
@@ -423,6 +439,61 @@ final class TaskService {
             }
             self.updateTaskStatus(id: taskId, status: .failed)
             self.stopObserving(taskId: taskId)
+
+        case "workforce.output.present":
+            // Agent explicitly requested to show an output in the preview panel
+            if let outDict = payload["output"]?.value as? [String: ProtoAnyCodable] {
+                let rawFilePath = outDict["filePath"]?.value as? String
+                let rawUrl = outDict["url"]?.value as? String
+                let title = outDict["title"]?.value as? String ?? "Output"
+                let outputId = outDict["id"]?.value as? String ?? UUID().uuidString
+
+                // Resolve file path (same logic as workforce.task.output)
+                let resolvedFilePath: String?
+                if let fp = rawFilePath, !fp.isEmpty {
+                    resolvedFilePath = fp
+                } else if rawUrl == nil, title.contains(".") {
+                    let home = FileManager.default.homeDirectoryForCurrentUser.path
+                    resolvedFilePath = "\(home)/.openclaw/workspace/\(title)"
+                } else {
+                    resolvedFilePath = nil
+                }
+
+                self.logger.info("[output.present] taskId=\(taskId) title=\(title) filePath=\(resolvedFilePath ?? "nil") url=\(rawUrl ?? "nil")")
+
+                let output = TaskOutput(
+                    id: outputId,
+                    taskId: taskId,
+                    type: OutputType(rawValue: outDict["type"]?.value as? String ?? "") ?? .unknown,
+                    title: title,
+                    filePath: resolvedFilePath,
+                    url: rawUrl,
+                    createdAt: Date())
+
+                // Add to task outputs if not already present
+                if let index = self.tasks.firstIndex(where: { $0.id == taskId }) {
+                    if !self.tasks[index].outputs.contains(where: { $0.id == outputId }) {
+                        self.tasks[index].outputs.append(output)
+                        self.taskOutputs[taskId, default: []].append(output)
+                    }
+                }
+
+                // Post notification to switch preview panel to this output
+                NotificationCenter.default.post(
+                    name: .presentOutput,
+                    object: nil,
+                    userInfo: ["taskId": taskId, "outputId": outputId]
+                )
+            }
+
+        case "workforce.output.refresh":
+            // Agent requested to refresh the currently displayed output
+            self.logger.info("[output.refresh] taskId=\(taskId)")
+            NotificationCenter.default.post(
+                name: .refreshOutput,
+                object: nil,
+                userInfo: ["taskId": taskId]
+            )
 
         default:
             break
