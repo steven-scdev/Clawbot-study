@@ -331,6 +331,35 @@ struct TaskChatView: View {
                 self.blobPhase = 1
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .presentOutput)) { notification in
+            guard let userInfo = notification.userInfo,
+                  let notifTaskId = userInfo["taskId"] as? String,
+                  let outputId = userInfo["outputId"] as? String,
+                  notifTaskId == self.taskId else { return }
+
+            // Switch to the presented output
+            self.selectedOutputId = outputId
+
+            // Open pane if not already showing
+            if !self.showArtifactPane {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    self.showArtifactPane = true
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .refreshOutput)) { notification in
+            guard let userInfo = notification.userInfo,
+                  let notifTaskId = userInfo["taskId"] as? String,
+                  notifTaskId == self.taskId else { return }
+
+            // Notify child views to refresh via increment of a refresh token
+            // The ArtifactPaneView will observe this and trigger a reload
+            NotificationCenter.default.post(
+                name: .artifactRefreshRequested,
+                object: nil,
+                userInfo: ["taskId": self.taskId]
+            )
+        }
     }
 
     // MARK: - Actions

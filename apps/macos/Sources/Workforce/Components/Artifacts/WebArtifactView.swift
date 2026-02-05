@@ -7,6 +7,7 @@ struct WebArtifactView: View {
     let url: String
     let title: String
     var isTaskRunning: Bool = false
+    var taskId: String = ""
 
     @State private var isLoading = true
     @State private var loadError: String?
@@ -55,6 +56,12 @@ struct WebArtifactView: View {
         }
         .onDisappear {
             self.stopRefreshTimer()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .artifactRefreshRequested)) { notification in
+            guard let userInfo = notification.userInfo,
+                  let notifTaskId = userInfo["taskId"] as? String,
+                  notifTaskId == self.taskId else { return }
+            self.webViewCoordinator?.reload()
         }
     }
 

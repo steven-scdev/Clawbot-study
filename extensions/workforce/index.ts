@@ -8,7 +8,7 @@ import {
   getTaskBySessionKey,
   type TaskManifest,
 } from "./src/task-store.js";
-import { handleAgentEvent, handleToolCall } from "./src/event-bridge.js";
+import { handleAgentEvent, appendOutput, createFileOutput, createUrlOutput } from "./src/event-bridge.js";
 import { setupAgentWorkspaces } from "./src/agent-workspaces.js";
 import { buildWorkforceSessionKey, isWorkforceSession } from "./src/session-keys.js";
 import { writeTaskEpisode, updateEmployeeMemory } from "./src/memory-writer.js";
@@ -331,6 +331,110 @@ const workforcePlugin = {
       }
     });
 
+    // ── workforce.output.present ─────────────────────────────────
+    // Explicitly present an output in the preview panel.
+    // Called by agents via the `preview` tool after creating/updating files.
+    // Accepts either taskId directly or sessionKey (to derive taskId).
+    api.registerGatewayMethod("workforce.output.present", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        // Accept taskId directly or derive from sessionKey
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        const filePath = params.filePath as string | undefined;
+        const url = params.url as string | undefined;
+        const title = params.title as string | undefined;
+
+        if (!filePath && !url) {
+          respond(false, { error: "Must provide either filePath or url" });
+          return;
+        }
+
+        const task = getTask(taskId);
+        if (!task) {
+          respond(false, { error: `Task not found: ${taskId}` });
+          return;
+        }
+
+        // Extract agentId from session key for workspace-relative path resolution
+        const agentId = task.sessionKey.includes(":") ? task.sessionKey.split(":")[1] : undefined;
+
+        // Create the output object
+        const output = filePath
+          ? createFileOutput(filePath, agentId, title)
+          : createUrlOutput(url!, title);
+
+        // Add to task outputs
+        appendOutput(taskId, output);
+
+        // Broadcast with "present" flag to signal UI should switch to this output
+        context.broadcast("workforce.output.present", {
+          taskId,
+          output,
+          present: true,
+        });
+
+        api.logger.info(`[workforce] Output presented: ${output.title} for task ${taskId}`);
+        respond(true, { outputId: output.id, output });
+      } catch (err) {
+        api.logger.error(`[workforce] output.present failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.output.refresh ─────────────────────────────────
+    // Request the preview panel to refresh the current view.
+    // Useful when agent has updated a file that's already displayed.
+    // Accepts either taskId directly or sessionKey (to derive taskId).
+    api.registerGatewayMethod("workforce.output.refresh", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        // Accept taskId directly or derive from sessionKey
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        const task = getTask(taskId);
+        if (!task) {
+          respond(false, { error: `Task not found: ${taskId}` });
+          return;
+        }
+
+        // Broadcast refresh event to UI
+        context.broadcast("workforce.output.refresh", { taskId });
+
+        api.logger.info(`[workforce] Output refresh requested for task ${taskId}`);
+        respond(true, { success: true });
+      } catch (err) {
+        api.logger.error(`[workforce] output.refresh failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
     // ── Lifecycle hooks ──────────────────────────────────────────
 
     api.on("before_agent_start", async (_event, ctx) => {
@@ -356,8 +460,6 @@ const workforcePlugin = {
       const task = getTaskBySessionKey(sessionKey);
       if (!task) { return; }
       const toolName = (event.toolName as string) ?? "tool";
-      const params = (event.params as Record<string, unknown>) ?? {};
-      const result = typeof event.result === "string" ? event.result : undefined;
 
       const activity = {
         id: `act-${crypto.randomUUID().slice(0, 8)}`,
@@ -372,8 +474,7 @@ const workforcePlugin = {
       if (broadcast) {
         broadcast("workforce.task.activity", { taskId: task.id, activity });
         broadcast("workforce.task.progress", { taskId: task.id, progress });
-        // Detect file/URL outputs from tool calls (this fires regardless of verbose level)
-        handleToolCall(task.id, toolName, params, result, broadcast);
+        // Output detection removed — agents must explicitly call workforce.output.present
       } else {
         api.logger.warn(`[workforce] No broadcast available for task ${task.id}`);
       }

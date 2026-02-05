@@ -42,6 +42,12 @@ struct FileArtifactView: View {
                 self.refreshToken &+= 1
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .artifactRefreshRequested)) { notification in
+            guard let userInfo = notification.userInfo,
+                  let notifTaskId = userInfo["taskId"] as? String,
+                  notifTaskId == self.taskId else { return }
+            self.refreshToken &+= 1
+        }
     }
 
     private var placeholderView: some View {

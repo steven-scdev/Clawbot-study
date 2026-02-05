@@ -20,7 +20,8 @@ struct ArtifactRendererView: View {
                 WebArtifactView(
                     url: self.webURL(for: self.output),
                     title: self.output.title,
-                    isTaskRunning: self.isTaskRunning
+                    isTaskRunning: self.isTaskRunning,
+                    taskId: self.taskId
                 )
             case .file:
                 FileArtifactView(

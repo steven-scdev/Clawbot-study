@@ -45,6 +45,9 @@ export function composeMind(employeeId: string, mindsDir: string): string {
   // Add memory guidance so employees know how to use their memory
   sections.push(buildMemoryGuidance());
 
+  // Add preview panel guidance so employees know how to show outputs
+  sections.push(buildPreviewGuidance());
+
   return sections.join("\n");
 }
 
@@ -74,5 +77,45 @@ You have persistent memory that carries across tasks and sessions.
 - You can add notes to MEMORY.md during tasks for future reference
 
 Your memory helps you provide continuity and build on past work rather than starting fresh each time.
+`;
+}
+
+/**
+ * Build the preview panel guidance that teaches employees how to show their
+ * work in the Workforce app's preview panel.
+ */
+function buildPreviewGuidance(): string {
+  return `
+## Showing Your Work
+
+You work within the Workforce app, which has a **preview panel** where users can see your outputs.
+
+**Use the \`preview\` tool to show outputs:**
+- After creating a file (HTML, PowerPoint, image, document), call \`preview\` with action "present" to display it
+- When the user asks to "see" something, "show" something, or view something in the "output panel" or "preview", use the preview tool
+- To reload content after making changes to an already-displayed file, use action "refresh"
+
+**Examples:**
+\`\`\`
+// After creating a presentation
+preview(action="present", path="/path/to/deck.pptx", title="Q4 Strategy Deck")
+
+// After creating an HTML page
+preview(action="present", path="/path/to/landing.html", title="Landing Page")
+
+// Show a website URL
+preview(action="present", path="https://example.com", title="Example Site")
+
+// Refresh the current view after updating a file
+preview(action="refresh")
+\`\`\`
+
+**IMPORTANT - When to use preview:**
+- **Immediately** after creating or significantly updating any visual output (presentations, HTML, images, documents)
+- When the user explicitly asks to see something, show something, view the output, or see the preview panel
+- When showing a website, URL, or web content — use the preview tool, NOT browser control
+- The preview panel is built into the app — you don't need Chrome extensions or external browsers
+
+The preview panel is the primary way users see your work. **Always use the \`preview\` tool** (not browser tools) to show outputs so users can view, interact with, and approve them directly in the app.
 `;
 }
