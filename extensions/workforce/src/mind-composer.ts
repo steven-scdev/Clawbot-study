@@ -48,6 +48,9 @@ export function composeMind(employeeId: string, mindsDir: string): string {
   // Add preview panel guidance so employees know how to show outputs
   sections.push(buildPreviewGuidance());
 
+  // Add browser control guidance so employees know how to control the preview WebView
+  sections.push(buildBrowserControlGuidance());
+
   return sections.join("\n");
 }
 
@@ -109,19 +112,98 @@ preview(action="present", path="/path/to/deck.pptx", title="Q4 Strategy Deck")
 // After creating an HTML page
 preview(action="present", path="/path/to/landing.html", title="Landing Page")
 
-// Show a website URL
-preview(action="present", path="https://example.com", title="Example Site")
-
 // Refresh the current view after updating a file
 preview(action="refresh")
 \`\`\`
 
-**IMPORTANT - When to use preview:**
-- **Immediately** after creating or significantly updating any visual output (presentations, HTML, images, documents)
-- When the user explicitly asks to see something, show something, view the output, or see the preview panel
-- When showing a website, URL, or web content — use the preview tool, NOT browser control
+**IMPORTANT - When to use preview vs webview:**
+- Use \`preview\` for **files you created** (presentations, HTML, images, documents)
+- Use \`webview(action="navigate")\` for **websites you need to interact with** (login, click, fill forms, scrape data)
 - The preview panel is built into the app — you don't need Chrome extensions or external browsers
 
-The preview panel is the primary way users see your work. **Always use the \`preview\` tool** (not browser tools) to show outputs so users can view, interact with, and approve them directly in the app.
+**For browser automation tasks** (interacting with websites):
+- Do NOT use \`preview\` — it cannot interact with pages
+- Use \`webview(action="navigate", url="...")\` instead — this opens a real Chromium browser you can control
+- See "Browser Control" section below for how to interact with the page after navigating
+`;
+}
+
+/**
+ * Build the browser control guidance that teaches employees how to control
+ * the embedded browser in the preview panel using the standard browser() tool.
+ */
+function buildBrowserControlGuidance(): string {
+  return `
+## Browser Control in Preview Panel
+
+**For any task that requires interacting with a website** (login, click buttons, fill forms, scrape data), use the embedded browser:
+
+**Step 1: Open the embedded browser with webview:**
+\`\`\`
+webview(action="navigate", url="https://x.com")
+// Returns: { targetId: "abc123", profile: "openclaw" }
+\`\`\`
+This opens a real Chromium browser in the preview panel that you can control.
+
+**Step 2: Control the browser with the browser tool:**
+Use the \`targetId\` and \`profile\` from Step 1 for all subsequent browser operations.
+
+**Key actions:**
+
+1. **snapshot** — See the page structure (accessibility tree with refs)
+\`\`\`
+browser(action="snapshot", targetId="<id>", profile="openclaw")
+// Returns: { snapshot: "- button 'Submit' [ref=e1]\\n- textbox 'Email' [ref=e2]...", refs: {...} }
+\`\`\`
+
+2. **act** — Interact with elements using stable refs
+\`\`\`
+// Click an element
+browser(action="act", kind="click", ref="e1", targetId="<id>", profile="openclaw")
+
+// Type text into an input
+browser(action="act", kind="type", text="hello@example.com", ref="e2", targetId="<id>", profile="openclaw")
+
+// Press a key
+browser(action="act", kind="press", key="Enter", targetId="<id>", profile="openclaw")
+
+// Fill a form field (faster than type)
+browser(action="act", kind="fill", value="mypassword", ref="e3", targetId="<id>", profile="openclaw")
+\`\`\`
+
+3. **navigate** — Go to a URL
+\`\`\`
+browser(action="navigate", url="https://example.com", targetId="<id>", profile="openclaw")
+\`\`\`
+
+4. **screenshot** — Take a screenshot (returns file path, not inline data)
+\`\`\`
+browser(action="screenshot", targetId="<id>", profile="openclaw")
+// Returns: { path: "/tmp/screenshot-xxx.jpeg" }
+\`\`\`
+
+**Complete workflow:**
+1. \`webview(action="navigate", url="...")\` → get targetId from response
+2. \`browser(action="snapshot", targetId=X, profile="openclaw")\` → see the page structure
+3. Find the element you need by its ref (e.g., \`[ref=e3]\`)
+4. \`browser(action="act", kind="click", ref="e3", targetId=X, profile="openclaw")\` → interact
+5. \`browser(action="snapshot", ...)\` again to see the result
+6. Repeat steps 3-5 as needed
+
+**Why refs instead of selectors:**
+- Refs like \`e1\`, \`e2\`, \`e3\` are stable — they survive page updates
+- The accessibility tree shows element roles: \`button "Submit" [ref=e1]\`
+- You interact using refs, not CSS selectors or coordinates
+
+**Key principles:**
+- Always call \`snapshot\` first to see what's on the page
+- Use the returned refs to interact with elements
+- Chain operations: navigate → snapshot → act → snapshot → ...
+- The accessibility tree tells you element types (button, link, textbox, etc.)
+- **Never ask users to install Chrome extensions** — the embedded browser works directly
+
+**When to use browser control vs preview:**
+- Use \`webview\` + \`browser\` when you need to **interact** with a website (click, type, scrape)
+- Use \`preview\` when you just need to **show** a file you created (presentations, HTML, documents)
 `;
 }

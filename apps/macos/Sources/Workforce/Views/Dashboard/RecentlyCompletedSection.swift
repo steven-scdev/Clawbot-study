@@ -273,6 +273,8 @@ private struct CompletedCardView: View {
             return (Color.purple, "waveform", "Audio")
         case .code:
             return (Color.indigo, "curlybraces", "Code")
+        case .embeddedBrowser:
+            return (Color.cyan, "globe.badge.chevron.backward", "Browser")
         case .unknown:
             return (Color.gray, "questionmark", "Unknown")
         }

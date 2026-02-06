@@ -189,6 +189,7 @@ private struct OutputPillView: View {
         case .video: return "Video"
         case .audio: return "Audio"
         case .code: return "Code"
+        case .embeddedBrowser: return "Browser"
         case .unknown: return "Output"
         }
     }
@@ -204,6 +205,7 @@ private struct OutputPillView: View {
         case .video: Color(red: 0.5, green: 0.0, blue: 0.8)
         case .audio: Color(red: 0.85, green: 0.3, blue: 0.6)
         case .code: Color(red: 0.2, green: 0.3, blue: 0.5)
+        case .embeddedBrowser: Color(red: 0.0, green: 0.45, blue: 0.6)
         case .unknown: Color(white: 0.4)
         }
     }
@@ -219,6 +221,7 @@ private struct OutputPillView: View {
         case .video: .purple.opacity(0.15)
         case .audio: .pink.opacity(0.15)
         case .code: .blue.opacity(0.15)
+        case .embeddedBrowser: .cyan.opacity(0.1)
         case .unknown: .gray.opacity(0.1)
         }
     }
@@ -234,6 +237,7 @@ private struct OutputPillView: View {
         case .video: .purple.opacity(0.25)
         case .audio: .pink.opacity(0.25)
         case .code: .blue.opacity(0.25)
+        case .embeddedBrowser: .cyan.opacity(0.2)
         case .unknown: .gray.opacity(0.15)
         }
     }

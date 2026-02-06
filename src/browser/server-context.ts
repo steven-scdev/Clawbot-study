@@ -9,6 +9,7 @@ import type {
   ProfileRuntimeState,
   ProfileStatus,
 } from "./server-context.types.js";
+import { createSubsystemLogger } from "../logging/subsystem.js";
 import { appendCdpPath, createTargetViaCdp, getHeadersWithAuth, normalizeCdpWsUrl } from "./cdp.js";
 import {
   isChromeCdpReady,
@@ -25,6 +26,8 @@ import {
 import { getPwAiModule } from "./pw-ai-module.js";
 import { resolveTargetIdFromTabs } from "./target-id.js";
 import { movePathToTrash } from "./trash.js";
+
+const log = createSubsystemLogger("browser").child("context");
 
 export type {
   BrowserRouteContext,
@@ -287,7 +290,12 @@ function createProfileContext(
 
     if (isExtension) {
       if (!httpReachable) {
-        await ensureChromeExtensionRelayServer({ cdpUrl: profile.cdpUrl });
+        // Wrap in catch - relay may already be running (EADDRINUSE is expected)
+        await ensureChromeExtensionRelayServer({ cdpUrl: profile.cdpUrl }).catch((err) => {
+          log.warn(
+            `Chrome extension relay init failed for profile "${profile.name}": ${String(err)}`,
+          );
+        });
         if (await isHttpReachable(1200)) {
           // continue: we still need the extension to connect for CDP websocket.
         } else {

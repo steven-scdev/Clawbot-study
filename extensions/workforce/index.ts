@@ -12,6 +12,17 @@ import { handleAgentEvent, appendOutput, createFileOutput, createUrlOutput } fro
 import { setupAgentWorkspaces } from "./src/agent-workspaces.js";
 import { buildWorkforceSessionKey, isWorkforceSession } from "./src/session-keys.js";
 import { writeTaskEpisode, updateEmployeeMemory } from "./src/memory-writer.js";
+import {
+  startEmbeddedBrowser,
+  stopEmbeddedBrowser,
+  dispatchMouseEvent,
+  dispatchKeyEvent,
+  getEmbeddedSession,
+  setEmbeddedBroadcast,
+  captureScreenshot,
+  evaluateScript,
+  getPageInfo,
+} from "./src/embedded-browser.js";
 import { fileURLToPath } from "url";
 
 type GatewayMethodOpts = {
@@ -32,6 +43,13 @@ type PluginApi = {
 // losing the closure-scoped cachedBroadcast. globalThis persists across re-loads
 // within the same Node process.
 const BROADCAST_KEY = Symbol.for("workforce.broadcast");
+const PENDING_BROWSER_REQUESTS_KEY = Symbol.for("workforce.browser.pendingRequests");
+
+type PendingBrowserRequest = {
+  resolve: (result: unknown) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+};
 
 function getSharedBroadcast(): ((event: string, payload: unknown) => void) | null {
   return (globalThis as Record<symbol, unknown>)[BROADCAST_KEY] as ((event: string, payload: unknown) => void) | null ?? null;
@@ -39,6 +57,16 @@ function getSharedBroadcast(): ((event: string, payload: unknown) => void) | nul
 
 function setSharedBroadcast(broadcast: (event: string, payload: unknown) => void): void {
   (globalThis as Record<symbol, unknown>)[BROADCAST_KEY] = broadcast;
+  // Also update the embedded browser module's broadcast reference
+  setEmbeddedBroadcast(broadcast);
+}
+
+function getPendingBrowserRequests(): Map<string, PendingBrowserRequest> {
+  const globalMap = globalThis as Record<symbol, unknown>;
+  if (!globalMap[PENDING_BROWSER_REQUESTS_KEY]) {
+    globalMap[PENDING_BROWSER_REQUESTS_KEY] = new Map<string, PendingBrowserRequest>();
+  }
+  return globalMap[PENDING_BROWSER_REQUESTS_KEY] as Map<string, PendingBrowserRequest>;
 }
 
 /** Convert internal TaskManifest to the wire shape consumed by the Swift frontend. */
@@ -431,6 +459,561 @@ const workforcePlugin = {
         respond(true, { success: true });
       } catch (err) {
         api.logger.error(`[workforce] output.refresh failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.browser.execute ────────────────────────────────
+    // Execute arbitrary JavaScript in the browser.
+    // Returns the result of the script evaluation.
+    // Uses CDP directly if embedded browser is active, otherwise falls back to WKWebView.
+    api.registerGatewayMethod("workforce.browser.execute", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+        const script = params.script as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        if (!script) {
+          respond(false, { error: "Must provide script to execute" });
+          return;
+        }
+
+        const task = getTask(taskId);
+        if (!task) {
+          respond(false, { error: `Task not found: ${taskId}` });
+          return;
+        }
+
+        // Check if there's an embedded browser session (CDP path)
+        const embeddedSession = getEmbeddedSession(taskId);
+        if (embeddedSession?.streaming) {
+          api.logger.info(`[workforce] Using CDP path for execute, taskId=${taskId}`);
+          try {
+            const result = await evaluateScript({ taskId, script });
+            respond(true, { result });
+            return;
+          } catch (cdpErr) {
+            api.logger.error(`[workforce] CDP execute failed: ${cdpErr}`);
+            respond(false, { error: `CDP execute failed: ${errMsg(cdpErr)}` });
+            return;
+          }
+        }
+
+        // Fall back to WKWebView path
+        // Check if a WebView exists (has URL output)
+        const hasWebView = task.outputs.some((o) => o.type === "url");
+        if (!hasWebView) {
+          respond(false, {
+            error:
+              "No browser available. Navigate to a URL first using webview(action='navigate', url='...')",
+          });
+          return;
+        }
+
+        const requestId = crypto.randomUUID();
+        const pendingRequests = getPendingBrowserRequests();
+
+        // Create promise that will be resolved when response arrives
+        const resultPromise = new Promise<unknown>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            pendingRequests.delete(requestId);
+            reject(new Error("Browser execute request timed out"));
+          }, 30000);
+
+          pendingRequests.set(requestId, { resolve, reject, timeout });
+        });
+
+        // Broadcast request to macOS app
+        context.broadcast("workforce.browser.execute.request", {
+          taskId,
+          requestId,
+          script,
+        });
+
+        api.logger.info(`[workforce] Browser execute request (WKWebView): ${requestId}`);
+
+        try {
+          const result = await resultPromise;
+          respond(true, { result });
+        } catch (err) {
+          respond(false, { error: errMsg(err) });
+        }
+      } catch (err) {
+        api.logger.error(`[workforce] browser.execute failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.browser.observe ────────────────────────────────
+    // Capture current state of the browser.
+    // Returns { dom, screenshot, url, title }.
+    // Uses CDP directly if embedded browser is active, otherwise falls back to WKWebView.
+    api.registerGatewayMethod("workforce.browser.observe", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        const task = getTask(taskId);
+        if (!task) {
+          respond(false, { error: `Task not found: ${taskId}` });
+          return;
+        }
+
+        // Check if there's an embedded browser session (CDP path)
+        const embeddedSession = getEmbeddedSession(taskId);
+        if (embeddedSession?.streaming) {
+          api.logger.info(`[workforce] Using CDP path for observe, taskId=${taskId}`);
+          try {
+            // Get page info and screenshot via CDP
+            const [pageInfo, screenshot] = await Promise.all([
+              getPageInfo({ taskId }),
+              captureScreenshot({ taskId }),
+            ]);
+
+            respond(true, {
+              url: pageInfo.url,
+              title: pageInfo.title,
+              dom: pageInfo.dom,
+              screenshot: screenshot,
+            });
+            return;
+          } catch (cdpErr) {
+            api.logger.error(`[workforce] CDP observe failed: ${cdpErr}`);
+            respond(false, { error: `CDP observe failed: ${errMsg(cdpErr)}` });
+            return;
+          }
+        }
+
+        // Fall back to WKWebView path
+        // Check if a WebView exists (has URL output)
+        const hasWebView = task.outputs.some((o) => o.type === "url");
+        if (!hasWebView) {
+          respond(false, {
+            error:
+              "No browser available. Navigate to a URL first using webview(action='navigate', url='...')",
+          });
+          return;
+        }
+
+        const requestId = crypto.randomUUID();
+        const pendingRequests = getPendingBrowserRequests();
+
+        const resultPromise = new Promise<unknown>((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            pendingRequests.delete(requestId);
+            reject(new Error("Browser observe request timed out"));
+          }, 30000);
+
+          pendingRequests.set(requestId, { resolve, reject, timeout });
+        });
+
+        context.broadcast("workforce.browser.observe.request", {
+          taskId,
+          requestId,
+        });
+
+        api.logger.info(`[workforce] Browser observe request (WKWebView): ${requestId}`);
+
+        try {
+          const result = await resultPromise;
+          respond(true, result as Record<string, unknown>);
+        } catch (err) {
+          respond(false, { error: errMsg(err) });
+        }
+      } catch (err) {
+        api.logger.error(`[workforce] browser.observe failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.browser.navigate ───────────────────────────────
+    // Navigate the preview panel to a URL using the embedded browser (CDP screencast).
+    // This launches a real Chromium browser and streams frames to the app.
+    api.registerGatewayMethod("workforce.browser.navigate", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+        const url = params.url as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        if (!url) {
+          respond(false, { error: "Must provide url to navigate to" });
+          return;
+        }
+
+        const task = getTask(taskId);
+        if (!task) {
+          respond(false, { error: `Task not found: ${taskId}` });
+          return;
+        }
+
+        api.logger.info(`[workforce] Starting embedded browser for task ${taskId}: ${url}`);
+
+        // Use the embedded browser (CDP screencast) for full browser capabilities
+        const session = await startEmbeddedBrowser({
+          taskId,
+          url,
+          broadcast: context.broadcast,
+          screencastOptions: {
+            format: "jpeg",
+            quality: 80,
+            maxWidth: 1280,
+            maxHeight: 720,
+            everyNthFrame: 2,
+          },
+        });
+
+        // Broadcast started event (TaskService will create the output and present it)
+        context.broadcast("workforce.embedded.started", {
+          taskId,
+          targetId: session.targetId,
+          profile: "openclaw",
+          url: session.url,
+        });
+
+        api.logger.info(`[workforce] Embedded browser started: ${session.screencastKey}`);
+
+        // Return session info so agent can use the standard browser() tool
+        respond(true, {
+          result: {
+            url,
+            targetId: session.targetId,
+            profile: "openclaw",
+          },
+          message:
+            "Browser ready. Use browser(action='snapshot', targetId='" +
+            session.targetId +
+            "', profile='openclaw') to observe the page.",
+        });
+      } catch (err) {
+        api.logger.error(`[workforce] browser.navigate failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.browser.response ───────────────────────────────
+    // Receive response from macOS app for browser requests.
+    // Resolves the pending promise for the matching requestId.
+    api.registerGatewayMethod("workforce.browser.response", async ({ params, respond }) => {
+      try {
+        const requestId = params.requestId as string | undefined;
+        const success = params.success as boolean;
+        const result = params.result;
+        const error = params.error as string | undefined;
+
+        if (!requestId) {
+          respond(false, { error: "Must provide requestId" });
+          return;
+        }
+
+        api.logger.info(`[workforce] Browser response received: ${requestId}`);
+
+        const pendingRequests = getPendingBrowserRequests();
+        const pending = pendingRequests.get(requestId);
+
+        if (!pending) {
+          // Request may have timed out, been handled already, or this is a duplicate
+          // response from multiple WebViewCoordinators. This is expected and not an error.
+          api.logger.info(`[workforce] No pending request for ${requestId} (already handled or timed out)`);
+          respond(true, { handled: false });
+          return;
+        }
+
+        // Clear timeout and remove from map
+        clearTimeout(pending.timeout);
+        pendingRequests.delete(requestId);
+
+        if (success) {
+          pending.resolve(result);
+        } else {
+          pending.reject(new Error(error ?? "Browser request failed"));
+        }
+
+        respond(true, { handled: true });
+      } catch (err) {
+        api.logger.error(`[workforce] browser.response failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.embedded.start ─────────────────────────────────
+    // Start embedded browser streaming (Atlas/OWL-style CDP Screencast).
+    // Launches browser, navigates to URL, streams frames to macOS app.
+    api.registerGatewayMethod("workforce.embedded.start", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+        const url = params.url as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        if (!url) {
+          respond(false, { error: "Must provide url to open" });
+          return;
+        }
+
+        const task = getTask(taskId);
+        if (!task) {
+          respond(false, { error: `Task not found: ${taskId}` });
+          return;
+        }
+
+        const session = await startEmbeddedBrowser({
+          taskId,
+          url,
+          broadcast: context.broadcast,
+          screencastOptions: {
+            format: (params.format as "jpeg" | "png" | undefined) ?? "jpeg",
+            quality: (params.quality as number | undefined) ?? 80,
+            maxWidth: (params.maxWidth as number | undefined) ?? 1280,
+            maxHeight: (params.maxHeight as number | undefined) ?? 720,
+            everyNthFrame: (params.everyNthFrame as number | undefined) ?? 2,
+          },
+        });
+
+        api.logger.info(`[workforce] Embedded browser started for task ${taskId}: ${url}`);
+
+        // Notify the app that embedded browser is active
+        context.broadcast("workforce.embedded.started", {
+          taskId,
+          targetId: session.targetId,
+          url: session.url,
+        });
+
+        respond(true, {
+          taskId,
+          targetId: session.targetId,
+          url: session.url,
+          streaming: true,
+        });
+      } catch (err) {
+        api.logger.error(`[workforce] embedded.start failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.embedded.stop ──────────────────────────────────
+    // Stop embedded browser streaming for a task.
+    api.registerGatewayMethod("workforce.embedded.stop", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        await stopEmbeddedBrowser({ taskId });
+
+        api.logger.info(`[workforce] Embedded browser stopped for task ${taskId}`);
+
+        // Notify the app that embedded browser is stopped
+        context.broadcast("workforce.embedded.stopped", { taskId });
+
+        respond(true, { taskId, stopped: true });
+      } catch (err) {
+        api.logger.error(`[workforce] embedded.stop failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.embedded.input.mouse ───────────────────────────
+    // Dispatch mouse event to embedded browser (renderer-scoped, not OS-level).
+    api.registerGatewayMethod("workforce.embedded.input.mouse", async ({ params, respond }) => {
+      api.logger.debug(`[workforce] embedded.input.mouse received: ${JSON.stringify(params)}`);
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          api.logger.warn(`[workforce] embedded.input.mouse - no taskId provided`);
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        const session = getEmbeddedSession(taskId);
+        if (!session) {
+          api.logger.warn(`[workforce] embedded.input.mouse - no session for task: ${taskId}`);
+          respond(false, { error: `No embedded browser session for task: ${taskId}` });
+          return;
+        }
+        api.logger.debug(`[workforce] embedded.input.mouse - session found, targetId: ${session.targetId}`);
+
+        const type = params.type as "mousePressed" | "mouseReleased" | "mouseMoved" | "mouseWheel";
+        const x = params.x as number;
+        const y = params.y as number;
+
+        if (!type || typeof x !== "number" || typeof y !== "number") {
+          respond(false, { error: "Must provide type, x, and y" });
+          return;
+        }
+
+        await dispatchMouseEvent({
+          taskId,
+          type,
+          x,
+          y,
+          button: params.button as "none" | "left" | "middle" | "right" | undefined,
+          clickCount: params.clickCount as number | undefined,
+          deltaX: params.deltaX as number | undefined,
+          deltaY: params.deltaY as number | undefined,
+          modifiers: params.modifiers as number | undefined,
+        });
+
+        api.logger.debug(`[workforce] embedded.input.mouse - dispatched ${type} at (${x}, ${y})`);
+        respond(true, { dispatched: true });
+      } catch (err) {
+        api.logger.error(`[workforce] embedded.input.mouse failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.embedded.input.key ─────────────────────────────
+    // Dispatch keyboard event to embedded browser (renderer-scoped, not OS-level).
+    api.registerGatewayMethod("workforce.embedded.input.key", async ({ params, respond }) => {
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        const session = getEmbeddedSession(taskId);
+        if (!session) {
+          respond(false, { error: `No embedded browser session for task: ${taskId}` });
+          return;
+        }
+
+        const type = params.type as "keyDown" | "keyUp" | "char";
+        if (!type) {
+          respond(false, { error: "Must provide type (keyDown, keyUp, or char)" });
+          return;
+        }
+
+        await dispatchKeyEvent({
+          taskId,
+          type,
+          key: params.key as string | undefined,
+          code: params.code as string | undefined,
+          text: params.text as string | undefined,
+          modifiers: params.modifiers as number | undefined,
+        });
+
+        respond(true, { dispatched: true });
+      } catch (err) {
+        api.logger.error(`[workforce] embedded.input.key failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.embedded.status ────────────────────────────────
+    // Get the current embedded browser session status for a task.
+    api.registerGatewayMethod("workforce.embedded.status", async ({ params, respond }) => {
+      try {
+        let taskId = params.taskId as string | undefined;
+        const sessionKey = params.sessionKey as string | undefined;
+
+        if (!taskId && sessionKey) {
+          const taskBySession = getTaskBySessionKey(sessionKey);
+          if (taskBySession) {
+            taskId = taskBySession.id;
+          }
+        }
+
+        if (!taskId) {
+          respond(false, { error: "Must provide either taskId or sessionKey" });
+          return;
+        }
+
+        const session = getEmbeddedSession(taskId);
+        if (!session) {
+          respond(true, { active: false, taskId });
+          return;
+        }
+
+        respond(true, {
+          active: true,
+          taskId,
+          targetId: session.targetId,
+          url: session.url,
+          streaming: session.streaming,
+        });
+      } catch (err) {
+        api.logger.error(`[workforce] embedded.status failed: ${err}`);
         respond(false, { error: errMsg(err) });
       }
     });
