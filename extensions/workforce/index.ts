@@ -705,12 +705,24 @@ const workforcePlugin = {
         context.broadcast("workforce.embedded.started", {
           taskId,
           targetId: session.targetId,
+          profile: "openclaw",
           url: session.url,
         });
 
         api.logger.info(`[workforce] Embedded browser started: ${session.screencastKey}`);
 
-        respond(true, { result: { url, targetId: session.targetId } });
+        // Return session info so agent can use the standard browser() tool
+        respond(true, {
+          result: {
+            url,
+            targetId: session.targetId,
+            profile: "openclaw",
+          },
+          message:
+            "Browser ready. Use browser(action='snapshot', targetId='" +
+            session.targetId +
+            "', profile='openclaw') to observe the page.",
+        });
       } catch (err) {
         api.logger.error(`[workforce] browser.navigate failed: ${err}`);
         respond(false, { error: errMsg(err) });
