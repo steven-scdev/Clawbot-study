@@ -180,6 +180,106 @@
   stroke-width: 2px;
 }
 
+/* Document attachment variant */
+.chat-attachment--document {
+  width: auto;
+  min-width: 120px;
+  max-width: 200px;
+  height: auto;
+  padding: 8px 28px 8px 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel-strong);
+}
+
+.chat-attachment__doc-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.chat-attachment__doc-name {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Attach button styles */
+.chat-compose__attach {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.chat-compose__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.chat-compose__attach-btn {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 150ms ease-out;
+}
+
+.chat-compose__attach-btn:hover:not(:disabled) {
+  background: var(--panel-strong);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.chat-compose__attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chat-compose__attach-btn svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Light theme attach button overrides */
+:root[data-theme="light"] .chat-compose__attach-btn {
+  background: #ffffff;
+  border-color: rgba(16, 24, 40, 0.15);
+}
+
+:root[data-theme="light"] .chat-compose__attach-btn:hover:not(:disabled) {
+  background: #f8fafc;
+  border-color: rgba(16, 24, 40, 0.25);
+}
+
+:root[data-theme="light"] .chat-attachment--document {
+  background: #f1f5f9;
+}
+
 /* Light theme attachment overrides */
 :root[data-theme="light"] .chat-attachments {
   background: #f8fafc;

@@ -140,14 +140,116 @@ function handlePaste(e: ClipboardEvent, props: ChatProps) {
   }
 }
 
+// Supported document types for upload
+const SUPPORTED_DOCUMENT_TYPES = [
+  "application/pdf",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+  "application/xml",
+  "text/xml",
+  "text/html",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+];
+
+const SUPPORTED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+
+function isImageType(mimeType: string): boolean {
+  return SUPPORTED_IMAGE_TYPES.includes(mimeType) || mimeType.startsWith("image/");
+}
+
+function isDocumentType(mimeType: string): boolean {
+  return SUPPORTED_DOCUMENT_TYPES.includes(mimeType);
+}
+
+function getFileAcceptString(): string {
+  return [...SUPPORTED_IMAGE_TYPES, ...SUPPORTED_DOCUMENT_TYPES].join(",");
+}
+
+function handleFileSelect(e: Event, props: ChatProps) {
+  const input = e.target as HTMLInputElement;
+  const files = input.files;
+  if (!files || files.length === 0 || !props.onAttachmentsChange) return;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const isImage = isImageType(file.type);
+    const isDocument = isDocumentType(file.type);
+
+    if (!isImage && !isDocument) {
+      console.warn(`Unsupported file type: ${file.type}`);
+      continue;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      const newAttachment: ChatAttachment = {
+        id: generateAttachmentId(),
+        dataUrl,
+        mimeType: file.type,
+        filename: file.name,
+        isDocument: isDocument,
+      };
+      const current = props.attachments ?? [];
+      props.onAttachmentsChange?.([...current, newAttachment]);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Reset the input so the same file can be selected again
+  input.value = "";
+}
+
+function getDocumentIcon(mimeType: string): string {
+  if (mimeType === "application/pdf") return "📄";
+  if (mimeType.includes("word")) return "📝";
+  if (mimeType.includes("excel") || mimeType.includes("spreadsheet")) return "📊";
+  if (mimeType === "text/csv") return "📊";
+  if (mimeType === "application/json") return "{ }";
+  if (mimeType.includes("xml")) return "📋";
+  if (mimeType === "text/markdown") return "📑";
+  return "📎";
+}
+
 function renderAttachmentPreview(props: ChatProps) {
   const attachments = props.attachments ?? [];
   if (attachments.length === 0) return nothing;
 
   return html`
     <div class="chat-attachments">
-      ${attachments.map(
-        (att) => html`
+      ${attachments.map((att) => {
+        const isDocument = att.isDocument || isDocumentType(att.mimeType);
+        
+        if (isDocument) {
+          return html`
+            <div class="chat-attachment chat-attachment--document">
+              <div class="chat-attachment__doc-icon">
+                ${getDocumentIcon(att.mimeType)}
+              </div>
+              <div class="chat-attachment__doc-name" title=${att.filename ?? "Document"}>
+                ${att.filename ?? "Document"}
+              </div>
+              <button
+                class="chat-attachment__remove"
+                type="button"
+                aria-label="Remove attachment"
+                @click=${() => {
+                  const next = (props.attachments ?? []).filter((a) => a.id !== att.id);
+                  props.onAttachmentsChange?.(next);
+                }}
+              >
+                ${icons.x}
+              </button>
+            </div>
+          `;
+        }
+        
+        return html`
           <div class="chat-attachment">
             <img
               src=${att.dataUrl}
@@ -166,8 +268,8 @@ function renderAttachmentPreview(props: ChatProps) {
               ${icons.x}
             </button>
           </div>
-        `,
-      )}
+        `;
+      })}
     </div>
   `;
 }
@@ -331,6 +433,29 @@ export function renderChat(props: ChatProps) {
       <div class="chat-compose">
         ${renderAttachmentPreview(props)}
         <div class="chat-compose__row">
+          <div class="chat-compose__attach">
+            <input
+              type="file"
+              id="chat-file-input"
+              class="chat-compose__file-input"
+              accept=${getFileAcceptString()}
+              multiple
+              @change=${(e: Event) => handleFileSelect(e, props)}
+            />
+            <button
+              class="btn chat-compose__attach-btn"
+              type="button"
+              title="Attach file (images, PDFs, documents)"
+              aria-label="Attach file"
+              ?disabled=${!props.connected}
+              @click=${() => {
+                const input = document.getElementById("chat-file-input") as HTMLInputElement;
+                input?.click();
+              }}
+            >
+              ${icons.paperclip}
+            </button>
+          </div>
           <label class="field chat-compose__field">
             <span>Message</span>
             <textarea

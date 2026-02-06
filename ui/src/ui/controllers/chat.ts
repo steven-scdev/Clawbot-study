@@ -51,6 +51,32 @@ function dataUrlToBase64(dataUrl: string): { content: string; mimeType: string }
   return { mimeType: match[1], content: match[2] };
 }
 
+function isImageMimeType(mimeType: string): boolean {
+  return mimeType.startsWith("image/");
+}
+
+function isTextBasedDocument(mimeType: string): boolean {
+  const textTypes = [
+    "text/plain",
+    "text/markdown",
+    "text/csv",
+    "application/json",
+    "application/xml",
+    "text/xml",
+    "text/html",
+  ];
+  return textTypes.includes(mimeType);
+}
+
+function base64ToText(base64: string): string {
+  try {
+    return decodeURIComponent(escape(atob(base64)));
+  } catch {
+    // Fallback for non-UTF8 encoded content
+    return atob(base64);
+  }
+}
+
 export async function sendChatMessage(
   state: ChatState,
   message: string,
@@ -68,13 +94,22 @@ export async function sendChatMessage(
   if (msg) {
     contentBlocks.push({ type: "text", text: msg });
   }
-  // Add image previews to the message for display
+  // Add attachment previews to the message for display
   if (hasAttachments) {
     for (const att of attachments) {
-      contentBlocks.push({
-        type: "image",
-        source: { type: "base64", media_type: att.mimeType, data: att.dataUrl },
-      });
+      if (isImageMimeType(att.mimeType)) {
+        contentBlocks.push({
+          type: "image",
+          source: { type: "base64", media_type: att.mimeType, data: att.dataUrl },
+        });
+      } else {
+        // For documents, show filename in the message
+        const filename = att.filename ?? "document";
+        contentBlocks.push({
+          type: "text",
+          text: `📎 ${filename}`,
+        });
+      }
     }
   }
 
@@ -94,28 +129,51 @@ export async function sendChatMessage(
   state.chatStream = "";
   state.chatStreamStartedAt = now;
 
-  // Convert attachments to API format
-  const apiAttachments = hasAttachments
-    ? attachments
-        .map((att) => {
-          const parsed = dataUrlToBase64(att.dataUrl);
-          if (!parsed) return null;
-          return {
-            type: "image",
-            mimeType: parsed.mimeType,
-            content: parsed.content,
-          };
-        })
-        .filter((a): a is NonNullable<typeof a> => a !== null)
-    : undefined;
+  // Build the final message with document content embedded
+  let finalMessage = msg;
+  const imageAttachments: Array<{ type: string; mimeType: string; content: string }> = [];
+  const documentAttachments: Array<{ type: string; mimeType: string; content: string; filename?: string }> = [];
+
+  if (hasAttachments) {
+    for (const att of attachments) {
+      const parsed = dataUrlToBase64(att.dataUrl);
+      if (!parsed) continue;
+
+      if (isImageMimeType(att.mimeType)) {
+        // Images are sent as attachments
+        imageAttachments.push({
+          type: "image",
+          mimeType: parsed.mimeType,
+          content: parsed.content,
+        });
+      } else if (isTextBasedDocument(att.mimeType)) {
+        // Text documents: decode and append to message
+        const textContent = base64ToText(parsed.content);
+        const filename = att.filename ?? "document";
+        const separator = finalMessage ? "\n\n" : "";
+        finalMessage += `${separator}--- Document: ${filename} ---\n${textContent}`;
+      } else {
+        // Binary documents (PDF, Word, Excel): send as document attachment
+        documentAttachments.push({
+          type: "document",
+          mimeType: parsed.mimeType,
+          content: parsed.content,
+          filename: att.filename,
+        });
+      }
+    }
+  }
+
+  // Combine all attachments
+  const apiAttachments = [...imageAttachments, ...documentAttachments];
 
   try {
     await state.client.request("chat.send", {
       sessionKey: state.sessionKey,
-      message: msg,
+      message: finalMessage,
       deliver: false,
       idempotencyKey: runId,
-      attachments: apiAttachments,
+      attachments: apiAttachments.length > 0 ? apiAttachments : undefined,
     });
     return runId;
   } catch (err) {
