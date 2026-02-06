@@ -21,6 +21,34 @@ extension Notification.Name {
     /// Internal notification for artifact views to refresh their content.
     /// userInfo: ["taskId": String]
     static let artifactRefreshRequested = Notification.Name("ai.openclaw.workforce.artifactRefreshRequested")
+
+    // MARK: - Browser Control Notifications
+
+    /// Posted when an agent requests JavaScript execution in the preview WebView.
+    /// userInfo: ["taskId": String, "requestId": String, "script": String]
+    static let browserExecuteRequest = Notification.Name("ai.openclaw.workforce.browserExecuteRequest")
+
+    /// Posted when an agent requests to observe the preview WebView state.
+    /// userInfo: ["taskId": String, "requestId": String]
+    static let browserObserveRequest = Notification.Name("ai.openclaw.workforce.browserObserveRequest")
+
+    /// Posted when an agent requests to navigate the preview WebView to a URL.
+    /// userInfo: ["taskId": String, "requestId": String, "url": String]
+    static let browserNavigateRequest = Notification.Name("ai.openclaw.workforce.browserNavigateRequest")
+
+    // MARK: - Embedded Browser Notifications (CDP Screencast)
+
+    /// Posted when an embedded browser frame is received.
+    /// userInfo: ["taskId": String, "frame": [String: Any] with "data" (base64) and "metadata"]
+    static let embeddedBrowserFrame = Notification.Name("ai.openclaw.workforce.embeddedBrowserFrame")
+
+    /// Posted when an embedded browser session starts.
+    /// userInfo: ["taskId": String, "targetId": String, "url": String]
+    static let embeddedBrowserStarted = Notification.Name("ai.openclaw.workforce.embeddedBrowserStarted")
+
+    /// Posted when an embedded browser session stops.
+    /// userInfo: ["taskId": String]
+    static let embeddedBrowserStopped = Notification.Name("ai.openclaw.workforce.embeddedBrowserStopped")
 }
 
 /// Manages task lifecycle via the workforce plugin's gateway methods.
@@ -242,6 +270,157 @@ final class TaskService {
             _ = try await self.gateway.request(method: "workforce.outputs.reveal", params: params)
         } catch {
             self.logger.warning("workforce.outputs.reveal failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Browser Control Response
+
+    /// Send a response back to the gateway for a browser control request.
+    /// Called by WebViewCoordinator after executing JavaScript, capturing state, or navigating.
+    func sendBrowserResponse(requestId: String, success: Bool, result: Any? = nil, error: String? = nil) async {
+        var params: [String: AnyCodable] = [
+            "requestId": AnyCodable(requestId),
+            "success": AnyCodable(success),
+        ]
+
+        if let result = result {
+            // Convert result to AnyCodable - handle common types
+            if let stringResult = result as? String {
+                params["result"] = AnyCodable(stringResult)
+            } else if let dictResult = result as? [String: Any] {
+                params["result"] = AnyCodable(dictResult)
+            } else if let boolResult = result as? Bool {
+                params["result"] = AnyCodable(boolResult)
+            } else if let numResult = result as? Double {
+                params["result"] = AnyCodable(numResult)
+            } else if let intResult = result as? Int {
+                params["result"] = AnyCodable(intResult)
+            } else {
+                params["result"] = AnyCodable(String(describing: result))
+            }
+        }
+
+        if let error = error {
+            params["error"] = AnyCodable(error)
+        }
+
+        do {
+            _ = try await self.gateway.request(method: "workforce.browser.response", params: params)
+            self.logger.info("[browser.response] requestId=\(requestId) success=\(success)")
+        } catch {
+            self.logger.warning("workforce.browser.response failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Embedded Browser Input (CDP Screencast)
+
+    /// Send a mouse event to the embedded browser via CDP.
+    /// Events are renderer-scoped (like Atlas), not OS-level.
+    func sendEmbeddedMouseEvent(
+        taskId: String,
+        type: String,
+        x: Int,
+        y: Int,
+        button: String? = nil,
+        clickCount: Int? = nil,
+        deltaX: Int? = nil,
+        deltaY: Int? = nil,
+        modifiers: Int? = nil
+    ) async {
+        var params: [String: AnyCodable] = [
+            "taskId": AnyCodable(taskId),
+            "type": AnyCodable(type),
+            "x": AnyCodable(x),
+            "y": AnyCodable(y),
+        ]
+
+        if let button = button {
+            params["button"] = AnyCodable(button)
+        }
+        if let clickCount = clickCount {
+            params["clickCount"] = AnyCodable(clickCount)
+        }
+        if let deltaX = deltaX {
+            params["deltaX"] = AnyCodable(deltaX)
+        }
+        if let deltaY = deltaY {
+            params["deltaY"] = AnyCodable(deltaY)
+        }
+        if let modifiers = modifiers {
+            params["modifiers"] = AnyCodable(modifiers)
+        }
+
+        do {
+            self.logger.debug("[embedded.input.mouse] sending \(type) at (\(x), \(y)) for task \(taskId)")
+            let result = try await self.gateway.request(method: "workforce.embedded.input.mouse", params: params)
+            self.logger.debug("[embedded.input.mouse] sent \(type) - result: \(String(describing: result))")
+        } catch {
+            self.logger.error("[embedded.input.mouse] FAILED for task \(taskId): \(error)")
+        }
+    }
+
+    /// Send a keyboard event to the embedded browser via CDP.
+    /// Events are renderer-scoped (like Atlas), not OS-level.
+    func sendEmbeddedKeyEvent(
+        taskId: String,
+        type: String,
+        key: String? = nil,
+        code: String? = nil,
+        text: String? = nil,
+        modifiers: Int? = nil
+    ) async {
+        var params: [String: AnyCodable] = [
+            "taskId": AnyCodable(taskId),
+            "type": AnyCodable(type),
+        ]
+
+        if let key = key {
+            params["key"] = AnyCodable(key)
+        }
+        if let code = code {
+            params["code"] = AnyCodable(code)
+        }
+        if let text = text {
+            params["text"] = AnyCodable(text)
+        }
+        if let modifiers = modifiers {
+            params["modifiers"] = AnyCodable(modifiers)
+        }
+
+        do {
+            _ = try await self.gateway.request(method: "workforce.embedded.input.key", params: params)
+        } catch {
+            self.logger.warning("workforce.embedded.input.key failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Start an embedded browser session for a task.
+    func startEmbeddedBrowser(taskId: String, url: String) async throws {
+        let params: [String: AnyCodable] = [
+            "taskId": AnyCodable(taskId),
+            "url": AnyCodable(url),
+        ]
+
+        do {
+            _ = try await self.gateway.request(method: "workforce.embedded.start", params: params)
+            self.logger.info("[embedded.start] taskId=\(taskId) url=\(url)")
+        } catch {
+            self.logger.warning("workforce.embedded.start failed: \(error.localizedDescription)")
+            throw error
+        }
+    }
+
+    /// Stop the embedded browser session for a task.
+    func stopEmbeddedBrowser(taskId: String) async {
+        let params: [String: AnyCodable] = [
+            "taskId": AnyCodable(taskId),
+        ]
+
+        do {
+            _ = try await self.gateway.request(method: "workforce.embedded.stop", params: params)
+            self.logger.info("[embedded.stop] taskId=\(taskId)")
+        } catch {
+            self.logger.warning("workforce.embedded.stop failed: \(error.localizedDescription)")
         }
     }
 
@@ -476,14 +655,32 @@ final class TaskService {
                         self.tasks[index].outputs.append(output)
                         self.taskOutputs[taskId, default: []].append(output)
                     }
-                }
 
-                // Post notification to switch preview panel to this output
-                NotificationCenter.default.post(
-                    name: .presentOutput,
-                    object: nil,
-                    userInfo: ["taskId": taskId, "outputId": outputId]
-                )
+                    // Check if there's an active embedded browser for this task
+                    // If so, and this is a website output for the same URL, don't switch
+                    let hasEmbeddedBrowser = self.tasks[index].outputs.contains { existingOutput in
+                        existingOutput.type == .embeddedBrowser &&
+                        existingOutput.url == rawUrl
+                    }
+
+                    if hasEmbeddedBrowser && output.type == .website {
+                        self.logger.info("[output.present] Skipping switch - embedded browser active for same URL")
+                    } else {
+                        // Post notification to switch preview panel to this output
+                        NotificationCenter.default.post(
+                            name: .presentOutput,
+                            object: nil,
+                            userInfo: ["taskId": taskId, "outputId": outputId]
+                        )
+                    }
+                } else {
+                    // No task found, still post the notification
+                    NotificationCenter.default.post(
+                        name: .presentOutput,
+                        object: nil,
+                        userInfo: ["taskId": taskId, "outputId": outputId]
+                    )
+                }
             }
 
         case "workforce.output.refresh":
@@ -491,6 +688,145 @@ final class TaskService {
             self.logger.info("[output.refresh] taskId=\(taskId)")
             NotificationCenter.default.post(
                 name: .refreshOutput,
+                object: nil,
+                userInfo: ["taskId": taskId]
+            )
+
+        // MARK: - Browser Control Events
+
+        case "workforce.browser.execute.request":
+            // Agent requests JavaScript execution in the preview WebView
+            guard let requestId = payload["requestId"]?.value as? String,
+                  let script = payload["script"]?.value as? String else {
+                self.logger.warning("[browser.execute] Missing requestId or script")
+                return
+            }
+            self.logger.info("[browser.execute] taskId=\(taskId) requestId=\(requestId)")
+            NotificationCenter.default.post(
+                name: .browserExecuteRequest,
+                object: nil,
+                userInfo: ["taskId": taskId, "requestId": requestId, "script": script]
+            )
+
+        case "workforce.browser.observe.request":
+            // Agent requests to observe the current WebView state
+            guard let requestId = payload["requestId"]?.value as? String else {
+                self.logger.warning("[browser.observe] Missing requestId")
+                return
+            }
+            self.logger.info("[browser.observe] taskId=\(taskId) requestId=\(requestId)")
+            NotificationCenter.default.post(
+                name: .browserObserveRequest,
+                object: nil,
+                userInfo: ["taskId": taskId, "requestId": requestId]
+            )
+
+        case "workforce.browser.navigate.request":
+            // Agent requests to navigate to a URL
+            guard let requestId = payload["requestId"]?.value as? String,
+                  let url = payload["url"]?.value as? String else {
+                self.logger.warning("[browser.navigate] Missing requestId or url")
+                return
+            }
+            self.logger.info("[browser.navigate] taskId=\(taskId) requestId=\(requestId) url=\(url)")
+            NotificationCenter.default.post(
+                name: .browserNavigateRequest,
+                object: nil,
+                userInfo: ["taskId": taskId, "requestId": requestId, "url": url]
+            )
+
+        // MARK: - Embedded Browser Events (CDP Screencast)
+
+        case "workforce.embedded.frame":
+            // CDP screencast frame received - forward to BrowserStreamView
+            guard let frameAnyCodable = payload["frame"] else {
+                self.logger.warning("[embedded.frame] Missing frame payload for taskId=\(taskId)")
+                return
+            }
+
+            // Recursively unwrap AnyCodable values
+            let frameDict = self.unwrapAnyCodable(frameAnyCodable.value)
+
+            // Log periodically to verify data is present
+            if Int.random(in: 0..<30) == 0 {
+                let dataSize = (frameDict["data"] as? String)?.count ?? 0
+                if let metadata = frameDict["metadata"] as? [String: Any] {
+                    let deviceWidth = metadata["deviceWidth"] as? Int ?? 0
+                    let deviceHeight = metadata["deviceHeight"] as? Int ?? 0
+                    self.logger.info("[embedded.frame] taskId=\(taskId) dataSize=\(dataSize) device=\(deviceWidth)x\(deviceHeight)")
+                } else {
+                    self.logger.info("[embedded.frame] taskId=\(taskId) dataSize=\(dataSize) metadata=nil")
+                }
+            }
+
+            NotificationCenter.default.post(
+                name: .embeddedBrowserFrame,
+                object: nil,
+                userInfo: ["taskId": taskId, "frame": frameDict]
+            )
+
+        case "workforce.embedded.started":
+            // Embedded browser session started
+            let targetId = payload["targetId"]?.value as? String ?? ""
+            let url = payload["url"]?.value as? String ?? ""
+            self.logger.info("[embedded.started] taskId=\(taskId) targetId=\(targetId) url=\(url)")
+
+            // Create an embedded browser output to trigger BrowserStreamView in the preview panel
+            let outputId = "embedded-\(taskId)"
+            let output = TaskOutput(
+                id: outputId,
+                taskId: taskId,
+                type: .embeddedBrowser,
+                title: "Browser",
+                url: url,
+                createdAt: Date()
+            )
+
+            // Add to task outputs if not already present, or update URL if navigating
+            if let index = self.tasks.firstIndex(where: { $0.id == taskId }) {
+                if let outputIndex = self.tasks[index].outputs.firstIndex(where: { $0.id == outputId }) {
+                    // Update existing output's URL when navigating to a new URL
+                    let oldUrl = self.tasks[index].outputs[outputIndex].url
+                    if oldUrl != url {
+                        self.logger.info("[embedded.started] Updating embedded browser URL: \(oldUrl ?? "nil") -> \(url)")
+                        self.tasks[index].outputs[outputIndex].url = url
+                        if let taskOutputIndex = self.taskOutputs[taskId]?.firstIndex(where: { $0.id == outputId }) {
+                            self.taskOutputs[taskId]?[taskOutputIndex].url = url
+                        }
+                    }
+                } else {
+                    // Add new output
+                    self.tasks[index].outputs.append(output)
+                    self.taskOutputs[taskId, default: []].append(output)
+                }
+            }
+
+            // Post notification to switch preview panel to the embedded browser
+            NotificationCenter.default.post(
+                name: .presentOutput,
+                object: nil,
+                userInfo: ["taskId": taskId, "outputId": outputId]
+            )
+
+            NotificationCenter.default.post(
+                name: .embeddedBrowserStarted,
+                object: nil,
+                userInfo: ["taskId": taskId, "targetId": targetId, "url": url]
+            )
+
+        case "workforce.embedded.stopped":
+            // Embedded browser session stopped
+            self.logger.info("[embedded.stopped] taskId=\(taskId)")
+
+            // Remove the embedded browser output from the task
+            let outputId = "embedded-\(taskId)"
+            if let index = self.tasks.firstIndex(where: { $0.id == taskId }) {
+                self.tasks[index].outputs.removeAll { $0.id == outputId }
+            }
+            self.taskOutputs[taskId]?.removeAll { $0.id == outputId }
+
+            NotificationCenter.default.post(
+                name: .embeddedBrowserStopped,
                 object: nil,
                 userInfo: ["taskId": taskId]
             )
@@ -577,6 +913,48 @@ final class TaskService {
         } catch {
             self.logger.warning("Failed to start agent for \(sessionKey): \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - AnyCodable Unwrapping
+
+    /// Recursively unwrap AnyCodable values to get plain Swift types.
+    /// This handles nested dictionaries where values are wrapped in ProtoAnyCodable.
+    private func unwrapAnyCodable(_ value: Any) -> [String: Any] {
+        var result: [String: Any] = [:]
+
+        // Handle dictionary with Any values
+        if let dict = value as? [String: Any] {
+            for (key, val) in dict {
+                if let anyCodable = val as? ProtoAnyCodable {
+                    // Unwrap the AnyCodable
+                    let unwrapped = anyCodable.value
+                    // If it's a nested dictionary, recursively unwrap
+                    if unwrapped is [String: Any] || unwrapped is [String: ProtoAnyCodable] {
+                        result[key] = self.unwrapAnyCodable(unwrapped)
+                    } else {
+                        result[key] = unwrapped
+                    }
+                } else if val is [String: Any] || val is [String: ProtoAnyCodable] {
+                    // Nested dictionary, recursively unwrap
+                    result[key] = self.unwrapAnyCodable(val)
+                } else {
+                    result[key] = val
+                }
+            }
+        }
+        // Handle dictionary with ProtoAnyCodable values
+        else if let dict = value as? [String: ProtoAnyCodable] {
+            for (key, val) in dict {
+                let unwrapped = val.value
+                if unwrapped is [String: Any] || unwrapped is [String: ProtoAnyCodable] {
+                    result[key] = self.unwrapAnyCodable(unwrapped)
+                } else {
+                    result[key] = unwrapped
+                }
+            }
+        }
+
+        return result
     }
 
     // MARK: - Private Helpers

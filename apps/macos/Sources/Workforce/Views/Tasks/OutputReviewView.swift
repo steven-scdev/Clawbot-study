@@ -215,6 +215,7 @@ extension OutputType {
         case .video: "play.rectangle.fill"
         case .audio: "waveform"
         case .code: "curlybraces"
+        case .embeddedBrowser: "globe.badge.chevron.backward"
         case .unknown: "questionmark.square"
         }
     }

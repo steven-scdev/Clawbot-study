@@ -55,6 +55,7 @@ enum OutputType: String, Codable, Sendable {
     case video
     case audio
     case code
+    case embeddedBrowser  // CDP screencast stream
     case unknown
 
     init(from decoder: Decoder) throws {

@@ -19,6 +19,7 @@ import { createSessionsSendTool } from "./tools/sessions-send-tool.js";
 import { createSessionsSpawnTool } from "./tools/sessions-spawn-tool.js";
 import { createTtsTool } from "./tools/tts-tool.js";
 import { createWebFetchTool, createWebSearchTool } from "./tools/web-tools.js";
+import { createWorkforceBrowserTool } from "./tools/workforce-browser-tool.js";
 
 export function createOpenClawTools(options?: {
   sandboxBrowserBridgeUrl?: string;
@@ -136,6 +137,9 @@ export function createOpenClawTools(options?: {
       config: options?.config,
     }),
     createPreviewTool({
+      sessionKey: options?.agentSessionKey,
+    }),
+    createWorkforceBrowserTool({
       sessionKey: options?.agentSessionKey,
     }),
     ...(webSearchTool ? [webSearchTool] : []),
