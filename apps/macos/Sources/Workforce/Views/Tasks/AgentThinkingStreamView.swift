@@ -21,20 +21,21 @@ struct AgentThinkingStreamView: View {
     }
 
     private func activityLine(_ activity: TaskActivity) -> some View {
-        HStack(spacing: 6) {
+        let isPlanning = activity.type == .planning
+        return HStack(spacing: 6) {
             Image(systemName: self.icon(for: activity.type))
                 .font(.system(size: 10))
-                .foregroundStyle(Color(white: 0.5))
+                .foregroundStyle(isPlanning ? Color.accentColor : Color(white: 0.5))
 
             Text(self.displayText(for: activity))
                 .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(Color(white: 0.45))
+                .foregroundStyle(isPlanning ? Color.accentColor.opacity(0.8) : Color(white: 0.45))
                 .lineLimit(1)
                 .truncationMode(.tail)
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 8)
-        .background(Color.white.opacity(0.1))
+        .background(isPlanning ? Color.accentColor.opacity(0.08) : Color.white.opacity(0.1))
         .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
@@ -43,6 +44,7 @@ struct AgentThinkingStreamView: View {
         case .thinking: "brain"
         case .toolCall: "wrench.and.screwdriver"
         case .toolResult: "checkmark.rectangle"
+        case .planning: "sparkle.magnifyingglass"
         default: "circle"
         }
     }

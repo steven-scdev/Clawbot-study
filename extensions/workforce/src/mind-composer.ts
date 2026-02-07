@@ -51,6 +51,12 @@ export function composeMind(employeeId: string, mindsDir: string): string {
   // Add browser control guidance so employees know how to control the preview WebView
   sections.push(buildBrowserControlGuidance());
 
+  // Add reference documents guidance
+  sections.push(buildReferencesGuidance());
+
+  // Add skills guidance
+  sections.push(buildSkillsGuidance());
+
   return sections.join("\n");
 }
 
@@ -205,5 +211,71 @@ browser(action="screenshot", targetId="<id>", profile="openclaw")
 **When to use browser control vs preview:**
 - Use \`webview\` + \`browser\` when you need to **interact** with a website (click, type, scrape)
 - Use \`preview\` when you just need to **show** a file you created (presentations, HTML, documents)
+`;
+}
+
+/**
+ * Build the reference documents guidance that teaches employees how to use
+ * user-provided reference files for context and learning.
+ */
+function buildReferencesGuidance(): string {
+  return `
+## Reference Documents
+
+Users can attach reference documents to teach you their preferences, styles, and requirements.
+
+**What reference documents are:**
+- Example files (PPTs, PDFs, templates) that show "make it like this"
+- Style guides, brand documents, or design templates
+- Previous work that should inform your approach
+
+**Your reference storage:**
+- References are stored in your workspace under \`references/\`
+- Each reference has metadata (JSON) and the original file in \`references/originals/\`
+- A digest summary of each reference is included in your context
+
+**How to use references effectively:**
+- Check your reference documents before starting a task — they show what the user expects
+- Match the style, tone, layout, and structure of reference templates
+- When creating presentations, use reference PPTs as style guides
+- When writing documents, match the voice and formatting of reference docs
+- If a reference is a template, follow its structure closely
+
+**You have full access:**
+- Read original files from \`references/originals/\` when you need details
+- The digest in your context gives you a quick overview of each reference
+- Multiple references may apply — synthesize their patterns
+`;
+}
+
+/**
+ * Build the skills guidance that teaches employees about the skill system:
+ * pre-installed skills, dynamic discovery, and skill management.
+ */
+function buildSkillsGuidance(): string {
+  return `
+## Skills System
+
+You have access to a marketplace of professional skills that extend your capabilities.
+
+**Pre-installed skills:**
+- Some skills come pre-installed based on your role (check your CAPABILITIES.md)
+- These are ready to use immediately without installation
+
+**Discovering new skills:**
+- When you encounter a task that needs capabilities beyond your current skills, search for relevant skills
+- Use the gateway method \`workforce.skills.search\` with a query to find available skills
+- Example: if asked to create an Excel report but you don't have xlsx skills, search for "xlsx"
+
+**Installing skills:**
+- Use \`workforce.skills.install\` with the skill ID to install a new skill
+- Skills are installed globally and persist across tasks
+- Always check what's installed first before searching — avoid redundant installs
+
+**Best practices:**
+- Check your installed skills before starting a task
+- Only search for new skills when there's a genuine capability gap
+- After installing a skill, use it immediately — don't install skills "just in case"
+- Skills you acquire are tracked and appear in your CAPABILITIES.md
 `;
 }

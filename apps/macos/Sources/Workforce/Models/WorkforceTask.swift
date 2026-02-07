@@ -93,6 +93,7 @@ enum TaskStatus: String, Codable, Sendable {
 }
 
 enum TaskStage: String, Codable, Sendable {
+    case prepare
     case clarify
     case plan
     case execute
@@ -107,6 +108,7 @@ enum TaskStage: String, Codable, Sendable {
 
     var label: String {
         switch self {
+        case .prepare: "Preparing"
         case .clarify: "Clarify"
         case .plan: "Plan"
         case .execute: "Execute"
@@ -118,6 +120,7 @@ enum TaskStage: String, Codable, Sendable {
 
     var icon: String {
         switch self {
+        case .prepare: "sparkle.magnifyingglass"
         case .clarify: "questionmark.circle"
         case .plan: "map"
         case .execute: "hammer"
@@ -167,6 +170,7 @@ enum ActivityType: String, Codable, Sendable {
     case userMessage
     case error
     case completion
+    case planning
     case unknown
 
     init(from decoder: Decoder) throws {
@@ -183,6 +187,7 @@ enum ActivityType: String, Codable, Sendable {
         case .userMessage: "person.fill"
         case .error: "exclamationmark.triangle"
         case .completion: "checkmark.circle.fill"
+        case .planning: "sparkle.magnifyingglass"
         case .unknown: "circle"
         }
     }

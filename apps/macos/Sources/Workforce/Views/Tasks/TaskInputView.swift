@@ -20,6 +20,7 @@ struct TaskInputView: View {
     var onCancel: () -> Void
 
     @State private var taskDescription = ""
+    @State private var attachments: [URL] = []
     @State private var isSubmitting = false
     @State private var errorMessage: String?
     @State private var hoveredTemplateId: UUID?
@@ -262,6 +263,7 @@ struct TaskInputView: View {
     private var inputPill: some View {
         ChatInputPill(
             text: self.$taskDescription,
+            attachments: self.$attachments,
             placeholder: "Describe a new task...",
             isSubmitting: self.isSubmitting,
             errorMessage: self.errorMessage,
@@ -281,9 +283,11 @@ struct TaskInputView: View {
         self.isSubmitting = true
         self.errorMessage = nil
         do {
+            let filePaths = self.attachments.map(\.path)
             let task = try await self.taskService.submitTask(
                 employeeId: self.employee.id,
-                description: self.taskDescription.trimmingCharacters(in: .whitespacesAndNewlines))
+                description: self.taskDescription.trimmingCharacters(in: .whitespacesAndNewlines),
+                attachments: filePaths)
             self.onTaskSubmitted(task)
         } catch {
             self.errorMessage = error.localizedDescription

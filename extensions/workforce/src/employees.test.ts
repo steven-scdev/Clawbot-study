@@ -57,6 +57,7 @@ describe("buildEmployeeList", () => {
       status: "online",
       currentTaskId: null,
       avatarSystemName: "person.circle.fill",
+      preInstalledSkills: [],
     });
   });
 

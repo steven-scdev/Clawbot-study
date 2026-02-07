@@ -51,7 +51,27 @@ struct EmployeeCardView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .opacity(self.isOnline || self.isHovered ? 1 : 0.7)
-            .padding(.bottom, 16)
+            .padding(.bottom, 8)
+
+            // Skills
+            if !self.employee.displaySkills.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "wrench.and.screwdriver")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color(white: 0.45))
+                    ForEach(self.employee.displaySkills, id: \.self) { skill in
+                        Text(skill)
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color(white: 0.4))
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white.opacity(0.3))
+                            .clipShape(Capsule())
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .opacity(self.isOnline || self.isHovered ? 1 : 0.6)
+            }
 
             Spacer(minLength: 0)
 

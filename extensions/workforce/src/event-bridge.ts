@@ -43,8 +43,19 @@ export function handleAgentEvent(evt: AgentEvent, broadcast: Broadcaster): void 
     case "tool": {
       const activity = buildToolActivity(evt);
       if (activity) {
+        // Detect preparation-phase tool calls (skill checks/searches)
+        const toolName = (evt.data?.name as string) ?? "";
+        if (isPreparationTool(toolName) && activity.type === "toolCall") {
+          activity.type = "planning";
+        }
         appendActivity(taskId, activity);
         broadcast("workforce.task.activity", { taskId, activity });
+
+        // Auto-detect "prepare" stage from skill-related tool calls
+        if (isPreparationTool(toolName) && task.stage === "clarify") {
+          updateTask(taskId, { stage: "prepare" });
+          broadcast("workforce.task.stage", { taskId, stage: "prepare" });
+        }
       }
       // Output detection removed — agents must explicitly call preview.present()
       const progress = computeProgress(taskId);
@@ -183,22 +194,28 @@ function classifyOutputType(ext: string): TaskOutput["type"] {
   return "file";
 }
 
-const STAGE_ORDER = ["clarify", "plan", "execute", "review", "deliver"] as const;
+const STAGE_ORDER = ["prepare", "clarify", "plan", "execute", "review", "deliver"] as const;
+
+const PREPARATION_TOOLS = new Set(["skill_search", "skill_install", "skill_list", "memory_search", "memory_get"]);
+
+function isPreparationTool(toolName: string): boolean {
+  return PREPARATION_TOOLS.has(toolName);
+}
 
 function detectStageFromText(text: string, currentStage: string): TaskManifest["stage"] | null {
   const lower = text.toLowerCase();
   const currentIdx = STAGE_ORDER.indexOf(currentStage as typeof STAGE_ORDER[number]);
 
-  if (currentIdx < 1 && (lower.includes("plan") || lower.includes("approach") || lower.includes("i'll"))) {
+  if (currentIdx < 2 && (lower.includes("plan") || lower.includes("approach") || lower.includes("i'll"))) {
     return "plan";
   }
-  if (currentIdx < 2 && (lower.includes("implement") || lower.includes("creating") || lower.includes("writing"))) {
+  if (currentIdx < 3 && (lower.includes("implement") || lower.includes("creating") || lower.includes("writing"))) {
     return "execute";
   }
-  if (currentIdx < 3 && (lower.includes("review") || lower.includes("checking") || lower.includes("testing"))) {
+  if (currentIdx < 4 && (lower.includes("review") || lower.includes("checking") || lower.includes("testing"))) {
     return "review";
   }
-  if (currentIdx < 4 && (lower.includes("complete") || lower.includes("done") || lower.includes("finished"))) {
+  if (currentIdx < 5 && (lower.includes("complete") || lower.includes("done") || lower.includes("finished"))) {
     return "deliver";
   }
   return null;

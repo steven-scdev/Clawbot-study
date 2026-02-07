@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import type { EmployeeConfig } from "./employees.js";
 import { composeMind } from "./mind-composer.js";
+import { updateCapabilities } from "./capabilities.js";
 
 type Logger = {
   info: (msg: string) => void;
@@ -39,7 +40,16 @@ export async function setupAgentWorkspaces(
 
     const workspaceDir = resolveEmployeeWorkspaceDir(emp.id);
     mkdirSync(workspaceDir, { recursive: true });
+    mkdirSync(join(workspaceDir, "references", "originals"), { recursive: true });
+    mkdirSync(join(workspaceDir, "skill-usage"), { recursive: true });
     writeFileSync(join(workspaceDir, "IDENTITY.md"), mindContent, "utf-8");
+
+    // Generate initial CAPABILITIES.md with role + pre-installed skills
+    updateCapabilities(emp.id, {
+      role: emp.role,
+      preInstalledSkills: emp.preInstalledSkills ?? [],
+    });
+
     count++;
   }
   logger.info(`[workforce] Set up ${count} agent workspaces with IDENTITY.md`);

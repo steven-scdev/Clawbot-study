@@ -11,6 +11,8 @@ struct Employee: Identifiable, Codable, Sendable, Equatable {
     var capabilities: [String]
     var avatarSystemName: String
     var currentTaskId: String?
+    var preInstalledSkills: [String]
+    var acquiredSkills: [String]
 
     init(
         id: String,
@@ -21,7 +23,9 @@ struct Employee: Identifiable, Codable, Sendable, Equatable {
         status: EmployeeStatus,
         capabilities: [String],
         avatarSystemName: String = "person.circle.fill",
-        currentTaskId: String? = nil
+        currentTaskId: String? = nil,
+        preInstalledSkills: [String] = [],
+        acquiredSkills: [String] = []
     ) {
         self.id = id
         self.name = name
@@ -32,6 +36,8 @@ struct Employee: Identifiable, Codable, Sendable, Equatable {
         self.capabilities = capabilities
         self.avatarSystemName = avatarSystemName
         self.currentTaskId = currentTaskId
+        self.preInstalledSkills = preInstalledSkills
+        self.acquiredSkills = acquiredSkills
     }
 
     init(from decoder: Decoder) throws {
@@ -45,6 +51,8 @@ struct Employee: Identifiable, Codable, Sendable, Equatable {
         self.capabilities = try container.decode([String].self, forKey: .capabilities)
         self.avatarSystemName = try container.decodeIfPresent(String.self, forKey: .avatarSystemName) ?? "person.circle.fill"
         self.currentTaskId = try container.decodeIfPresent(String.self, forKey: .currentTaskId)
+        self.preInstalledSkills = try container.decodeIfPresent([String].self, forKey: .preInstalledSkills) ?? []
+        self.acquiredSkills = try container.decodeIfPresent([String].self, forKey: .acquiredSkills) ?? []
     }
 }
 
@@ -66,6 +74,14 @@ enum EmployeeStatus: String, Codable, Sendable, CaseIterable {
 extension Employee {
     var displayCapabilities: [String] {
         Array(self.capabilities.prefix(3))
+    }
+
+    /// Short skill names extracted from full skill IDs (e.g. "anthropics/skills@pptx" → "pptx").
+    var displaySkills: [String] {
+        let all = self.preInstalledSkills + self.acquiredSkills
+        return Array(Set(all.map { skillId in
+            skillId.components(separatedBy: "@").last ?? skillId
+        })).sorted().prefix(3).map { String($0) }
     }
 }
 

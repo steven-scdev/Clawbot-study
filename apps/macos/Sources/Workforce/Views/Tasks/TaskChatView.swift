@@ -17,6 +17,7 @@ struct TaskChatView: View {
     var onBack: () -> Void
 
     @State private var messageText = ""
+    @State private var attachments: [URL] = []
     @State private var blobPhase: CGFloat = 0
     @State private var showArtifactPane = false
     @State private var selectedOutputId: String?
@@ -75,7 +76,7 @@ struct TaskChatView: View {
                     content: activity.message,
                     timestamp: activity.timestamp
                 ))
-            case .thinking, .toolCall, .toolResult, .unknown:
+            case .thinking, .toolCall, .toolResult, .planning, .unknown:
                 continue
             }
         }
@@ -88,7 +89,7 @@ struct TaskChatView: View {
         guard let task else { return [] }
         return task.activities.filter { activity in
             switch activity.type {
-            case .thinking, .toolCall, .toolResult:
+            case .thinking, .toolCall, .toolResult, .planning:
                 return true
             default:
                 return false
@@ -130,7 +131,7 @@ struct TaskChatView: View {
     private var latestAgentActivity: String {
         guard let task else { return "" }
         return task.activities.last(where: {
-            $0.type == .thinking || $0.type == .toolCall
+            $0.type == .thinking || $0.type == .toolCall || $0.type == .planning
         })?.message ?? ""
     }
 
@@ -208,6 +209,7 @@ struct TaskChatView: View {
                             HStack(alignment: .bottom, spacing: 12) {
                                 ChatInputPill(
                                     text: self.$messageText,
+                                    attachments: self.$attachments,
                                     placeholder: "Send a message to \(self.employee.name)...",
                                     onSubmit: self.sendMessage
                                 )
@@ -372,7 +374,15 @@ struct TaskChatView: View {
     private func sendMessage() async {
         let text = self.messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
+        let filePaths = self.attachments.map(\.path)
         self.messageText = ""
+        self.attachments = []
+
+        // Store references for attached files before sending the message
+        if !filePaths.isEmpty, let task = self.task {
+            await self.taskService.addReferences(employeeId: task.employeeId, filePaths: filePaths)
+        }
+
         await self.taskService.sendFollowUp(taskId: self.taskId, message: text)
     }
 }

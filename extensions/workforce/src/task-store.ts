@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 
 export type TaskActivity = {
   id: string;
-  type: "thinking" | "toolCall" | "toolResult" | "text" | "error" | "completion";
+  type: "thinking" | "toolCall" | "toolResult" | "text" | "error" | "completion" | "planning";
   message: string;
   timestamp: string;
   detail?: string;
@@ -24,7 +24,7 @@ export type TaskManifest = {
   employeeId: string;
   brief: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  stage: "clarify" | "plan" | "execute" | "review" | "deliver";
+  stage: "prepare" | "clarify" | "plan" | "execute" | "review" | "deliver";
   progress: number;
   sessionKey: string;
   attachments: string[];

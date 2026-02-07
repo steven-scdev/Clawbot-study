@@ -9,6 +9,7 @@ export type EmployeeConfig = {
   agentId: string;
   capabilities: string[];
   avatarSystemName?: string;
+  preInstalledSkills?: string[];
 };
 
 /** Default employees used when no config is provided. */
@@ -21,6 +22,7 @@ const DEFAULT_EMPLOYEES: EmployeeConfig[] = [
     description: "Creates professional websites and landing pages",
     agentId: "emma-web",
     capabilities: ["Trend Analysis", "Copywriting", "Web Design", "React"],
+    preInstalledSkills: ["anthropics/skills@frontend-design"],
   },
   {
     id: "david-decks",
@@ -30,6 +32,7 @@ const DEFAULT_EMPLOYEES: EmployeeConfig[] = [
     description: "Creates professional presentation decks and data visualizations",
     agentId: "david-decks",
     capabilities: ["Data Visualization", "Complex Modeling", "Presentations"],
+    preInstalledSkills: ["anthropics/skills@pptx", "anthropics/skills@xlsx"],
   },
   {
     id: "sarah-research",
@@ -39,6 +42,7 @@ const DEFAULT_EMPLOYEES: EmployeeConfig[] = [
     description: "Deep research, system design, and full stack development",
     agentId: "sarah-research",
     capabilities: ["Full Stack Dev", "System Design", "Research"],
+    preInstalledSkills: ["anthropics/skills@pdf", "anthropics/skills@docx"],
   },
   {
     id: "phil-ppt",
@@ -48,6 +52,7 @@ const DEFAULT_EMPLOYEES: EmployeeConfig[] = [
     description: "Creates compelling PowerPoint presentations and pitch decks",
     agentId: "phil-ppt",
     capabilities: ["PowerPoint", "Pitch Decks", "Slide Design", "Storytelling"],
+    preInstalledSkills: ["anthropics/skills@pptx"],
   },
 ];
 
@@ -73,6 +78,7 @@ export function buildEmployeeList(employees: EmployeeConfig[]) {
       status: busy ? "busy" : "online",
       currentTaskId: activeTask?.id ?? null,
       avatarSystemName: emp.avatarSystemName ?? "person.circle.fill",
+      preInstalledSkills: emp.preInstalledSkills ?? [],
     };
   });
 }

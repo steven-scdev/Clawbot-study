@@ -97,7 +97,7 @@ final class TaskService {
     /// Dashboard-specific: actively executing tasks (execute stage or pending)
     var inProgressTasks: [WorkforceTask] {
         self.tasks.filter { task in
-            (task.status == .running && task.stage == .execute) ||
+            (task.status == .running && (task.stage == .execute || task.stage == .prepare)) ||
             task.status == .pending
         }
     }
@@ -421,6 +421,37 @@ final class TaskService {
             self.logger.info("[embedded.stop] taskId=\(taskId)")
         } catch {
             self.logger.warning("workforce.embedded.stop failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Reference Documents
+
+    func addReferences(employeeId: String, filePaths: [String]) async {
+        for filePath in filePaths {
+            let params: [String: AnyCodable] = [
+                "employeeId": AnyCodable(employeeId),
+                "filePath": AnyCodable(filePath),
+            ]
+            do {
+                _ = try await self.gateway.request(method: "workforce.references.add", params: params)
+                self.logger.info("Reference added for \(employeeId): \(filePath)")
+            } catch {
+                self.logger.warning("workforce.references.add failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    func listReferences(employeeId: String) async -> [ReferenceDoc] {
+        let params: [String: AnyCodable] = [
+            "employeeId": AnyCodable(employeeId),
+        ]
+        do {
+            let response: ReferenceListResponse = try await self.gateway.requestDecoded(
+                method: "workforce.references.list", params: params)
+            return response.references
+        } catch {
+            self.logger.warning("workforce.references.list failed: \(error.localizedDescription)")
+            return []
         }
     }
 

@@ -13,6 +13,13 @@ import { setupAgentWorkspaces } from "./src/agent-workspaces.js";
 import { buildWorkforceSessionKey, isWorkforceSession } from "./src/session-keys.js";
 import { writeTaskEpisode, updateEmployeeMemory } from "./src/memory-writer.js";
 import {
+  addReference,
+  listReferences,
+  removeReference,
+  formatReferencesForPrompt,
+} from "./src/reference-store.js";
+import { skillSearch, skillInstall, skillList } from "./src/skill-tools.js";
+import {
   startEmbeddedBrowser,
   stopEmbeddedBrowser,
   dispatchMouseEvent,
@@ -137,8 +144,25 @@ const workforcePlugin = {
           return;
         }
 
+        // Store attachments as references so the agent can find them
+        const storedRefs: string[] = [];
+        for (const filePath of attachments) {
+          try {
+            const doc = addReference(employeeId, filePath, { type: "reference" });
+            storedRefs.push(`- ${doc.originalName} → references/originals/${doc.id}${doc.originalName.slice(doc.originalName.lastIndexOf("."))}`);
+          } catch (refErr) {
+            api.logger.warn(`[workforce] Failed to store attachment as reference: ${refErr}`);
+          }
+        }
+
+        // Append reference file paths to brief so the agent knows what was attached
+        let enrichedBrief = brief;
+        if (storedRefs.length > 0) {
+          enrichedBrief += `\n\n## Attached Files\nThe user attached these files for you to use as references:\n${storedRefs.join("\n")}\n\nIMPORTANT: Use these attached files as your primary reference — read them from the paths above. Do NOT use other files from past tasks unless specifically relevant.`;
+        }
+
         const sessionKey = buildWorkforceSessionKey(employeeId);
-        const manifest = newTaskManifest({ employeeId, brief, sessionKey, attachments });
+        const manifest = newTaskManifest({ employeeId, brief: enrichedBrief, sessionKey, attachments });
         createTask(manifest);
 
         // Broadcast employee status change
@@ -355,6 +379,113 @@ const workforcePlugin = {
         respond(true, { success: true });
       } catch (err) {
         api.logger.error(`[workforce] outputs.reveal failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.references.add ───────────────────────────────────
+    api.registerGatewayMethod("workforce.references.add", async ({ params, respond, context }) => {
+      setSharedBroadcast(context.broadcast);
+      try {
+        const employeeId = requireString(params, "employeeId");
+        const filePath = requireString(params, "filePath");
+        const type = params.type as string | undefined;
+        const tags = params.tags as string[] | undefined;
+
+        const doc = addReference(employeeId, filePath, {
+          type: type as "template" | "example" | "style-guide" | "reference" | undefined,
+          tags,
+        });
+
+        context.broadcast("workforce.reference.added", {
+          employeeId,
+          reference: doc,
+        });
+
+        api.logger.info(`[workforce] Reference added: ${doc.id} for ${employeeId}`);
+        respond(true, { reference: doc });
+      } catch (err) {
+        api.logger.error(`[workforce] references.add failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.references.list ──────────────────────────────────
+    api.registerGatewayMethod("workforce.references.list", async ({ params, respond }) => {
+      try {
+        const employeeId = requireString(params, "employeeId");
+        const references = listReferences(employeeId);
+        respond(true, { references });
+      } catch (err) {
+        api.logger.error(`[workforce] references.list failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.references.remove ────────────────────────────────
+    api.registerGatewayMethod("workforce.references.remove", async ({ params, respond }) => {
+      try {
+        const employeeId = requireString(params, "employeeId");
+        const refId = requireString(params, "refId");
+        const removed = removeReference(employeeId, refId);
+        if (!removed) {
+          respond(false, { error: `Reference not found: ${refId}` });
+          return;
+        }
+        api.logger.info(`[workforce] Reference removed: ${refId} for ${employeeId}`);
+        respond(true, { removed: true });
+      } catch (err) {
+        api.logger.error(`[workforce] references.remove failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.skills.search ────────────────────────────────────
+    api.registerGatewayMethod("workforce.skills.search", async ({ params, respond }) => {
+      try {
+        const employeeId = requireString(params, "employeeId");
+        const query = requireString(params, "query");
+        const taskId = params.taskId as string | undefined;
+
+        const results = skillSearch(
+          { employeeId, taskId, logger: api.logger },
+          query,
+        );
+
+        respond(true, { results });
+      } catch (err) {
+        api.logger.error(`[workforce] skills.search failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.skills.install ───────────────────────────────────
+    api.registerGatewayMethod("workforce.skills.install", async ({ params, respond }) => {
+      try {
+        const employeeId = requireString(params, "employeeId");
+        const skillId = requireString(params, "skillId");
+        const taskId = params.taskId as string | undefined;
+
+        const result = skillInstall(
+          { employeeId, taskId, logger: api.logger },
+          skillId,
+        );
+
+        respond(true, result);
+      } catch (err) {
+        api.logger.error(`[workforce] skills.install failed: ${err}`);
+        respond(false, { error: errMsg(err) });
+      }
+    });
+
+    // ── workforce.skills.list ──────────────────────────────────────
+    api.registerGatewayMethod("workforce.skills.list", async ({ params, respond }) => {
+      try {
+        const employeeId = requireString(params, "employeeId");
+        const skills = skillList({ employeeId, logger: api.logger });
+        respond(true, { skills });
+      } catch (err) {
+        api.logger.error(`[workforce] skills.list failed: ${err}`);
         respond(false, { error: errMsg(err) });
       }
     });
@@ -1025,7 +1156,20 @@ const workforcePlugin = {
       if (!isWorkforceSession(sessionKey, config.employees)) { return; }
       const task = getTaskBySessionKey(sessionKey);
       if (!task) { return; }
-      updateTask(task.id, { status: "running", stage: "execute" });
+
+      // Inject reference documents into the task brief if available
+      const employeeId = task.employeeId;
+      const refContext = formatReferencesForPrompt(employeeId);
+      if (refContext && !task.brief.includes("## Reference Documents")) {
+        updateTask(task.id, {
+          brief: `${task.brief}\n\n${refContext}`,
+          status: "running",
+          stage: "execute",
+        });
+      } else {
+        updateTask(task.id, { status: "running", stage: "execute" });
+      }
+
       api.logger.info(`[workforce] Agent running: ${task.id}`);
       const broadcast = getSharedBroadcast();
       if (broadcast) {

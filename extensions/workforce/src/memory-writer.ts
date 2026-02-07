@@ -24,6 +24,7 @@ export type TaskEpisode = {
     title: string;
     path?: string;
   }>;
+  skillsUsed?: string[];
 };
 
 /**
@@ -36,6 +37,9 @@ export function writeTaskEpisode(task: TaskManifest): TaskEpisode {
   mkdirSync(episodesDir, { recursive: true });
 
   const description = getTaskDescription(task);
+  // Extract skill IDs from tool calls in activities
+  const skillsUsed = extractSkillsFromActivities(task.activities);
+
   const episode: TaskEpisode = {
     taskId: task.id,
     employeeId: task.employeeId,
@@ -48,6 +52,7 @@ export function writeTaskEpisode(task: TaskManifest): TaskEpisode {
       title: o.title,
       path: o.filePath,
     })),
+    ...(skillsUsed.length > 0 ? { skillsUsed } : {}),
   };
 
   const episodePath = join(episodesDir, `${task.id}.json`);
@@ -142,6 +147,23 @@ function extractSummaryFromActivities(activities: TaskActivity[]): string | null
     }
   }
   return null;
+}
+
+/**
+ * Extract skill IDs from tool call activities (skill_install, skill_search).
+ */
+function extractSkillsFromActivities(activities: TaskActivity[]): string[] {
+  const skills = new Set<string>();
+  for (const activity of activities) {
+    if (activity.type !== "toolCall") continue;
+    const msg = activity.message;
+    // Match skill install/search tool calls that contain a skillId
+    const installMatch = msg.match(/skill_install.*?["']([^"']+)["']/);
+    if (installMatch) skills.add(installMatch[1]);
+    const searchMatch = msg.match(/skill_search.*?["']([^"']+)["']/);
+    if (searchMatch) skills.add(searchMatch[1]);
+  }
+  return [...skills];
 }
 
 /**
