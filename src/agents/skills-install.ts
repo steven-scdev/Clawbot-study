@@ -364,7 +364,18 @@ export async function installSkill(params: SkillInstallRequest): Promise<SkillIn
     };
   }
   if (spec.kind === "download") {
-    return await installDownloadSpec({ entry, spec, timeoutMs });
+    // SECURITY: Download-based skill installation is disabled to prevent
+    // supply-chain attacks (e.g. AMOS malware distributed via fake skills
+    // that download malicious binaries from arbitrary URLs).
+    // --- Original: return await installDownloadSpec({ entry, spec, timeoutMs });
+    return {
+      ok: false,
+      message:
+        "Download-based skill installation is disabled for security. Only package-manager installs (brew, npm, go, uv) are allowed.",
+      stdout: "",
+      stderr: "",
+      code: null,
+    };
   }
 
   const prefs = resolveSkillsInstallPreferences(params.config);

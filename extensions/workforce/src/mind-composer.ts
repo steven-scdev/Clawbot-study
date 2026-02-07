@@ -115,21 +115,34 @@ You work within the Workforce app, which has a **preview panel** where users can
 // After creating a presentation
 preview(action="present", path="/path/to/deck.pptx", title="Q4 Strategy Deck")
 
-// After creating an HTML page
-preview(action="present", path="/path/to/landing.html", title="Landing Page")
+// After creating an Excel spreadsheet
+preview(action="present", path="/path/to/report.xlsx", title="Sales Report")
 
 // Refresh the current view after updating a file
 preview(action="refresh")
 \`\`\`
 
 **IMPORTANT - When to use preview vs webview:**
-- Use \`preview\` for **files you created** (presentations, HTML, images, documents)
-- Use \`webview(action="navigate")\` for **websites you need to interact with** (login, click, fill forms, scrape data)
+- Use \`preview\` for **non-web files** (presentations, spreadsheets, PDFs, images, documents)
+- Use \`webview(action="navigate")\` for **anything web/HTML** — websites, web apps, HTML files you built, landing pages, dashboards, etc.
 - The preview panel is built into the app — you don't need Chrome extensions or external browsers
 
-**For browser automation tasks** (interacting with websites):
-- Do NOT use \`preview\` — it cannot interact with pages
-- Use \`webview(action="navigate", url="...")\` instead — this opens a real Chromium browser you can control
+**Why use webview for websites you build:**
+- \`preview\` renders in a static panel — the user **cannot click, scroll, or interact** with the page
+- \`webview\` opens a real Chromium browser where the user can **fully interact** with the website (click links, fill forms, navigate)
+- Always use \`webview\` when the output is a website or web app, even if you created the HTML files yourself
+
+**For websites/web apps you build:**
+\`\`\`
+// Serve the site first (e.g. via a local dev server), then show it in the embedded browser
+webview(action="navigate", url="http://localhost:3000")
+
+// Or for a static HTML file — use file:// URL with webview, NOT preview
+webview(action="navigate", url="file:///path/to/index.html")
+\`\`\`
+
+**For browser automation tasks** (interacting with external websites):
+- Use \`webview(action="navigate", url="...")\` — this opens a real Chromium browser you can control
 - See "Browser Control" section below for how to interact with the page after navigating
 `;
 }
@@ -209,8 +222,9 @@ browser(action="screenshot", targetId="<id>", profile="openclaw")
 - **Never ask users to install Chrome extensions** — the embedded browser works directly
 
 **When to use browser control vs preview:**
-- Use \`webview\` + \`browser\` when you need to **interact** with a website (click, type, scrape)
-- Use \`preview\` when you just need to **show** a file you created (presentations, HTML, documents)
+- Use \`webview\` for **all web content** — websites you build, web apps, HTML pages, and sites you need to interact with
+- Use \`preview\` only for **non-web files** — presentations (pptx), spreadsheets (xlsx), PDFs, images
+- If the user asked you to build a website or web app, always show it via \`webview(action="navigate")\` so they can interact with it
 `;
 }
 
@@ -254,28 +268,39 @@ Users can attach reference documents to teach you their preferences, styles, and
  */
 function buildSkillsGuidance(): string {
   return `
-## Skills System
+## Skills
 
-You have access to a marketplace of professional skills that extend your capabilities.
+You have pre-installed skills based on your role (listed in your CAPABILITIES.md).
+These are ready to use immediately.
 
-**Pre-installed skills:**
-- Some skills come pre-installed based on your role (check your CAPABILITIES.md)
-- These are ready to use immediately without installation
-
-**Discovering new skills:**
-- When you encounter a task that needs capabilities beyond your current skills, search for relevant skills
-- Use the gateway method \`workforce.skills.search\` with a query to find available skills
-- Example: if asked to create an Excel report but you don't have xlsx skills, search for "xlsx"
-
-**Installing skills:**
-- Use \`workforce.skills.install\` with the skill ID to install a new skill
-- Skills are installed globally and persist across tasks
-- Always check what's installed first before searching — avoid redundant installs
-
-**Best practices:**
-- Check your installed skills before starting a task
-- Only search for new skills when there's a genuine capability gap
-- After installing a skill, use it immediately — don't install skills "just in case"
-- Skills you acquire are tracked and appear in your CAPABILITIES.md
+External skill installation is currently disabled for security.
+Do not attempt to search for or install skills from external sources.
+Work with your pre-installed skills and built-in capabilities.
 `;
+  // --- Original skills guidance (commented out for security) ---
+  // return `
+  // ## Skills System
+  //
+  // You have access to a marketplace of professional skills that extend your capabilities.
+  //
+  // **Pre-installed skills:**
+  // - Some skills come pre-installed based on your role (check your CAPABILITIES.md)
+  // - These are ready to use immediately without installation
+  //
+  // **Discovering new skills:**
+  // - When you encounter a task that needs capabilities beyond your current skills, search for relevant skills
+  // - Use the gateway method \`workforce.skills.search\` with a query to find available skills
+  // - Example: if asked to create an Excel report but you don't have xlsx skills, search for "xlsx"
+  //
+  // **Installing skills:**
+  // - Use \`workforce.skills.install\` with the skill ID to install a new skill
+  // - Skills are installed globally and persist across tasks
+  // - Always check what's installed first before searching — avoid redundant installs
+  //
+  // **Best practices:**
+  // - Check your installed skills before starting a task
+  // - Only search for new skills when there's a genuine capability gap
+  // - After installing a skill, use it immediately — don't install skills "just in case"
+  // - Skills you acquire are tracked and appear in your CAPABILITIES.md
+  // `;
 }

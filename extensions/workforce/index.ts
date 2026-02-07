@@ -29,6 +29,7 @@ import {
   captureScreenshot,
   evaluateScript,
   getPageInfo,
+  reloadEmbeddedBrowser,
 } from "./src/embedded-browser.js";
 import { fileURLToPath } from "url";
 
@@ -441,41 +442,47 @@ const workforcePlugin = {
     });
 
     // ── workforce.skills.search ────────────────────────────────────
-    api.registerGatewayMethod("workforce.skills.search", async ({ params, respond }) => {
-      try {
-        const employeeId = requireString(params, "employeeId");
-        const query = requireString(params, "query");
-        const taskId = params.taskId as string | undefined;
-
-        const results = skillSearch(
-          { employeeId, taskId, logger: api.logger },
-          query,
-        );
-
-        respond(true, { results });
-      } catch (err) {
-        api.logger.error(`[workforce] skills.search failed: ${err}`);
-        respond(false, { error: errMsg(err) });
-      }
+    // SECURITY: External skill search disabled to prevent supply-chain attacks
+    // (e.g. AMOS malware distributed via fake ClawHub skills).
+    api.registerGatewayMethod("workforce.skills.search", async ({ params: _params, respond }) => {
+      api.logger.info("[workforce] skills.search blocked — external skill search disabled for security");
+      respond(true, { results: [], message: "External skill search is disabled for security." });
+      // --- Original implementation (commented out for security) ---
+      // try {
+      //   const employeeId = requireString(params, "employeeId");
+      //   const query = requireString(params, "query");
+      //   const taskId = params.taskId as string | undefined;
+      //   const results = skillSearch(
+      //     { employeeId, taskId, logger: api.logger },
+      //     query,
+      //   );
+      //   respond(true, { results });
+      // } catch (err) {
+      //   api.logger.error(`[workforce] skills.search failed: ${err}`);
+      //   respond(false, { error: errMsg(err) });
+      // }
     });
 
     // ── workforce.skills.install ───────────────────────────────────
-    api.registerGatewayMethod("workforce.skills.install", async ({ params, respond }) => {
-      try {
-        const employeeId = requireString(params, "employeeId");
-        const skillId = requireString(params, "skillId");
-        const taskId = params.taskId as string | undefined;
-
-        const result = skillInstall(
-          { employeeId, taskId, logger: api.logger },
-          skillId,
-        );
-
-        respond(true, result);
-      } catch (err) {
-        api.logger.error(`[workforce] skills.install failed: ${err}`);
-        respond(false, { error: errMsg(err) });
-      }
+    // SECURITY: External skill install disabled to prevent supply-chain attacks
+    // (e.g. AMOS malware distributed via fake ClawHub skills).
+    api.registerGatewayMethod("workforce.skills.install", async ({ params: _params, respond }) => {
+      api.logger.info("[workforce] skills.install blocked — external skill install disabled for security");
+      respond(true, { success: false, message: "External skill installation is disabled for security. Use only pre-installed skills." });
+      // --- Original implementation (commented out for security) ---
+      // try {
+      //   const employeeId = requireString(params, "employeeId");
+      //   const skillId = requireString(params, "skillId");
+      //   const taskId = params.taskId as string | undefined;
+      //   const result = skillInstall(
+      //     { employeeId, taskId, logger: api.logger },
+      //     skillId,
+      //   );
+      //   respond(true, result);
+      // } catch (err) {
+      //   api.logger.error(`[workforce] skills.install failed: ${err}`);
+      //   respond(false, { error: errMsg(err) });
+      // }
     });
 
     // ── workforce.skills.list ──────────────────────────────────────
@@ -583,8 +590,15 @@ const workforcePlugin = {
           return;
         }
 
-        // Broadcast refresh event to UI
+        // Broadcast refresh event to UI (for WKWebView-based previews)
         context.broadcast("workforce.output.refresh", { taskId });
+
+        // Also reload the embedded browser if one is active for this task
+        const embeddedSession = getEmbeddedSession(taskId);
+        if (embeddedSession) {
+          await reloadEmbeddedBrowser({ taskId });
+          api.logger.info(`[workforce] Embedded browser reloaded for task ${taskId}`);
+        }
 
         api.logger.info(`[workforce] Output refresh requested for task ${taskId}`);
         respond(true, { success: true });
