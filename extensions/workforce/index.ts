@@ -9,7 +9,7 @@ import {
   type TaskManifest,
 } from "./src/task-store.js";
 import { handleAgentEvent, appendOutput, createFileOutput, createUrlOutput, flushTextBroadcast, resetTaskStreamingState } from "./src/event-bridge.js";
-import { setupAgentWorkspaces } from "./src/agent-workspaces.js";
+import { setupAgentWorkspaces, resolveEmployeeWorkspaceDir } from "./src/agent-workspaces.js";
 import { buildWorkforceSessionKey, isWorkforceSession } from "./src/session-keys.js";
 import { writeTaskEpisode, updateEmployeeMemory } from "./src/memory-writer.js";
 import {
@@ -32,6 +32,7 @@ import {
   reloadEmbeddedBrowser,
 } from "./src/embedded-browser.js";
 import { fileURLToPath } from "url";
+import { join, extname } from "node:path";
 
 type GatewayMethodOpts = {
   params: Record<string, unknown>;
@@ -145,19 +146,35 @@ const workforcePlugin = {
           return;
         }
 
-        // Store attachments as references so the agent can find them
+        // Store attachments as references so the agent can find them.
+        // For images, also emit `[media attached: ...]` tags with absolute paths
+        // so the Pi agent framework's native image detection loads them as
+        // multimodal content (Claude vision) automatically.
+        const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".heif"]);
         const storedRefs: string[] = [];
+        const mediaAttachments: string[] = [];
+        const workspaceDir = resolveEmployeeWorkspaceDir(employeeId);
         for (const filePath of attachments) {
           try {
             const doc = addReference(employeeId, filePath, { type: "reference" });
-            storedRefs.push(`- ${doc.originalName} → references/originals/${doc.id}${doc.originalName.slice(doc.originalName.lastIndexOf("."))}`);
+            const ext = extname(doc.originalName);
+            const absPath = join(workspaceDir, "references", "originals", `${doc.id}${ext}`);
+            storedRefs.push(`- ${doc.originalName} → ${absPath}`);
+            if (IMAGE_EXTS.has(ext.toLowerCase())) {
+              mediaAttachments.push(`[media attached: ${absPath} (${doc.digest})]`);
+            }
           } catch (refErr) {
             api.logger.warn(`[workforce] Failed to store attachment as reference: ${refErr}`);
           }
         }
 
-        // Append reference file paths to brief so the agent knows what was attached
+        // Append reference file paths to brief so the agent knows what was attached.
+        // Image attachments use the [media attached:] format that the Pi agent
+        // framework detects and injects as multimodal content blocks.
         let enrichedBrief = brief;
+        if (mediaAttachments.length > 0) {
+          enrichedBrief += `\n\n${mediaAttachments.join("\n")}`;
+        }
         if (storedRefs.length > 0) {
           enrichedBrief += `\n\n## Attached Files\nThe user attached these files for you to use as references:\n${storedRefs.join("\n")}\n\nIMPORTANT: Use these attached files as your primary reference — read them from the paths above. Do NOT use other files from past tasks unless specifically relevant.`;
         }
@@ -1197,6 +1214,13 @@ const workforcePlugin = {
       }
       // Identity is now provided via IDENTITY.md in the employee's agent workspace
       // (written by setupAgentWorkspaces at gateway start). No runtime injection needed.
+
+      // Return reference context as prependContext so the Pi runner prepends it
+      // to the agent's prompt. This allows detectAndLoadPromptImages to find
+      // [media attached: /path] tags and inject images as multimodal content.
+      if (refContext) {
+        return { prependContext: refContext };
+      }
     });
 
     api.on("after_tool_call", async (event, ctx) => {

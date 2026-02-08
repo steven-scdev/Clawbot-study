@@ -168,19 +168,34 @@ export function removeReference(employeeId: string, refId: string): boolean {
   return true;
 }
 
+const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".heif"]);
+
 /**
  * Build a markdown section listing all references for context injection.
+ * Image references also emit `[media attached: /absolute/path]` tags so
+ * the Pi agent framework's native image detection loads them as multimodal
+ * content blocks (Claude vision) automatically.
  * Returns empty string if no references exist.
  */
 export function formatReferencesForPrompt(employeeId: string): string {
   const docs = listReferences(employeeId);
   if (docs.length === 0) return "";
 
+  const origDir = originalsDir(employeeId);
+  const mediaLines: string[] = [];
   const lines = ["## Reference Documents\n"];
   for (const doc of docs) {
     const tagsStr = doc.tags.length > 0 ? ` [${doc.tags.join(", ")}]` : "";
     lines.push(`- **${doc.originalName}** (${doc.type}): ${doc.digest}${tagsStr}`);
+    const ext = extname(doc.originalName).toLowerCase();
+    if (IMAGE_EXTS.has(ext)) {
+      const absPath = join(origDir, `${doc.id}${extname(doc.originalName)}`);
+      mediaLines.push(`[media attached: ${absPath} (${doc.digest})]`);
+    }
   }
   lines.push("");
+  if (mediaLines.length > 0) {
+    lines.push(...mediaLines, "");
+  }
   return lines.join("\n");
 }
