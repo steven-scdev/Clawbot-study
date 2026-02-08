@@ -28,6 +28,9 @@ struct BrowserStreamView: View {
                     },
                     onKeyUp: { event in
                         self.handleKeyUp(event)
+                    },
+                    onScrollWheel: { event in
+                        self.handleScroll(event, in: geometry.size)
                     }
                 )
 
@@ -188,6 +191,43 @@ struct BrowserStreamView: View {
         }
     }
 
+    private func handleScroll(_ event: NSEvent, in viewSize: CGSize) {
+        guard let metadata = self.frameMetadata else { return }
+
+        // Get the mouse location in the view for the scroll position
+        let locationInWindow = event.locationInWindow
+        // Convert window coords to view-local (flip Y since AppKit is bottom-up)
+        let viewPoint = CGPoint(x: locationInWindow.x, y: viewSize.height - locationInWindow.y)
+
+        guard let browserCoords = self.convertToBrowserCoordinates(
+            viewPoint: viewPoint,
+            viewSize: viewSize,
+            deviceSize: CGSize(width: metadata.deviceWidth, height: metadata.deviceHeight)
+        ) else { return }
+
+        // CDP expects deltaX/deltaY in pixels. NSEvent scrollingDelta is in points
+        // (continuous scroll) or lines (non-continuous). Scale accordingly.
+        var deltaX = event.scrollingDeltaX
+        var deltaY = event.scrollingDeltaY
+
+        if !event.hasPreciseScrollingDeltas {
+            // Line-based scroll (mouse wheel): scale up to pixels
+            deltaX *= 40
+            deltaY *= 40
+        }
+
+        // CDP mouseWheel deltaY is inverted vs macOS (positive = scroll down in CDP)
+        Task {
+            await self.sendMouseEvent(
+                type: "mouseWheel",
+                x: browserCoords.x,
+                y: browserCoords.y,
+                deltaX: Int(-deltaX),
+                deltaY: Int(-deltaY)
+            )
+        }
+    }
+
     private func convertToBrowserCoordinates(viewPoint: CGPoint, viewSize: CGSize, deviceSize: CGSize) -> CGPoint? {
         // Safety check: avoid division by zero
         guard deviceSize.width > 0, deviceSize.height > 0,
@@ -225,7 +265,9 @@ struct BrowserStreamView: View {
         x: CGFloat,
         y: CGFloat,
         button: String? = nil,
-        clickCount: Int? = nil
+        clickCount: Int? = nil,
+        deltaX: Int? = nil,
+        deltaY: Int? = nil
     ) async {
         await self.taskService.sendEmbeddedMouseEvent(
             taskId: self.taskId,
@@ -233,7 +275,9 @@ struct BrowserStreamView: View {
             x: Int(x),
             y: Int(y),
             button: button,
-            clickCount: clickCount
+            clickCount: clickCount,
+            deltaX: deltaX,
+            deltaY: deltaY
         )
     }
 
@@ -467,17 +511,20 @@ struct FrameMetadata {
 struct KeyboardCaptureView: NSViewRepresentable {
     let onKeyDown: (NSEvent) -> Void
     let onKeyUp: (NSEvent) -> Void
+    let onScrollWheel: (NSEvent) -> Void
 
     func makeNSView(context: Context) -> KeyboardNSView {
         let view = KeyboardNSView()
         view.onKeyDown = self.onKeyDown
         view.onKeyUp = self.onKeyUp
+        view.onScrollWheel = self.onScrollWheel
         return view
     }
 
     func updateNSView(_ nsView: KeyboardNSView, context: Context) {
         nsView.onKeyDown = self.onKeyDown
         nsView.onKeyUp = self.onKeyUp
+        nsView.onScrollWheel = self.onScrollWheel
     }
 }
 
@@ -485,6 +532,7 @@ struct KeyboardCaptureView: NSViewRepresentable {
 final class KeyboardNSView: NSView {
     var onKeyDown: ((NSEvent) -> Void)?
     var onKeyUp: ((NSEvent) -> Void)?
+    var onScrollWheel: ((NSEvent) -> Void)?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -507,6 +555,10 @@ final class KeyboardNSView: NSView {
     override func keyUp(with event: NSEvent) {
         print("[KeyboardNSView] keyUp: keyCode=\(event.keyCode)")
         self.onKeyUp?(event)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        self.onScrollWheel?(event)
     }
 
     override func flagsChanged(with event: NSEvent) {

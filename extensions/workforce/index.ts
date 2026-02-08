@@ -8,7 +8,7 @@ import {
   getTaskBySessionKey,
   type TaskManifest,
 } from "./src/task-store.js";
-import { handleAgentEvent, appendOutput, createFileOutput, createUrlOutput } from "./src/event-bridge.js";
+import { handleAgentEvent, appendOutput, createFileOutput, createUrlOutput, flushTextBroadcast, resetTaskStreamingState } from "./src/event-bridge.js";
 import { setupAgentWorkspaces } from "./src/agent-workspaces.js";
 import { buildWorkforceSessionKey, isWorkforceSession } from "./src/session-keys.js";
 import { writeTaskEpisode, updateEmployeeMemory } from "./src/memory-writer.js";
@@ -1171,6 +1171,10 @@ const workforcePlugin = {
       const task = getTaskBySessionKey(sessionKey);
       if (!task) { return; }
 
+      // Clear stale streaming state from any previous run of this task
+      // (e.g. follow-up messages reuse the same taskId via workforce.tasks.revise).
+      resetTaskStreamingState(task.id);
+
       // Inject reference documents into the task brief if available
       const employeeId = task.employeeId;
       const refContext = formatReferencesForPrompt(employeeId);
@@ -1226,6 +1230,17 @@ const workforcePlugin = {
       if (!isWorkforceSession(sessionKey, config.employees)) { return; }
       const task = getTaskBySessionKey(sessionKey);
       if (!task || task.status === "completed" || task.status === "cancelled") { return; }
+
+      // Flush any pending debounced text so the frontend has the complete
+      // message before we signal completion. Without this, fast-completing
+      // agents may show truncated text (e.g. "Hey" instead of the full reply).
+      const broadcast = getSharedBroadcast();
+      if (broadcast) {
+        flushTextBroadcast(task.id, broadcast);
+      }
+      // Clean up streaming state so revised tasks get a fresh start
+      resetTaskStreamingState(task.id);
+
       updateTask(task.id, {
         status: "completed",
         stage: "deliver",
@@ -1246,7 +1261,6 @@ const workforcePlugin = {
         }
       }
 
-      const broadcast = getSharedBroadcast();
       if (broadcast) {
         broadcast("workforce.task.completed", { taskId: task.id });
         broadcast("workforce.employee.status", {

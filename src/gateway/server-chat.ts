@@ -245,27 +245,8 @@ export function createAgentEventHandler({
     // Include sessionKey so Control UI can filter tool streams per session.
     const agentPayload = sessionKey ? { ...evt, sessionKey } : evt;
     const last = agentRunSeq.get(evt.runId) ?? 0;
-    if (evt.stream === "tool" && !shouldEmitToolEvents(evt.runId, sessionKey)) {
-      agentRunSeq.set(evt.runId, evt.seq);
-      return;
-    }
-    if (evt.seq !== last + 1) {
-      broadcast("agent", {
-        runId: evt.runId,
-        stream: "error",
-        ts: Date.now(),
-        sessionKey,
-        data: {
-          reason: "seq gap",
-          expected: last + 1,
-          received: evt.seq,
-        },
-      });
-    }
-    agentRunSeq.set(evt.runId, evt.seq);
-    broadcast("agent", agentPayload);
-
-    // Call plugin hooks for streaming events
+    // Call plugin hooks for ALL streaming events (including tool events)
+    // before filtering tool broadcasts — plugins need tool events for activity tracking.
     const hookRunner = getGlobalHookRunner();
     if (hookRunner?.hasHooks("agent_stream")) {
       hookRunner
@@ -286,6 +267,26 @@ export function createAgentEventHandler({
           // Ignore hook errors to avoid breaking streaming
         });
     }
+
+    if (evt.stream === "tool" && !shouldEmitToolEvents(evt.runId, sessionKey)) {
+      agentRunSeq.set(evt.runId, evt.seq);
+      return;
+    }
+    if (evt.seq !== last + 1) {
+      broadcast("agent", {
+        runId: evt.runId,
+        stream: "error",
+        ts: Date.now(),
+        sessionKey,
+        data: {
+          reason: "seq gap",
+          expected: last + 1,
+          received: evt.seq,
+        },
+      });
+    }
+    agentRunSeq.set(evt.runId, evt.seq);
+    broadcast("agent", agentPayload);
 
     const lifecyclePhase =
       evt.stream === "lifecycle" && typeof evt.data?.phase === "string" ? evt.data.phase : null;

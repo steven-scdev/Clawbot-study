@@ -86,9 +86,10 @@ export async function startEmbeddedBrowser(opts: {
   // Check for existing session
   const existing = activeSessions.get(opts.taskId);
   if (existing?.streaming) {
-    // If same URL, just return existing session
+    // If same URL, reload the page and return existing session
     if (existing.url === opts.url) {
-      console.log(`[embedded-browser] Reusing existing session for task ${opts.taskId}, same URL`);
+      console.log(`[embedded-browser] Reusing existing session for task ${opts.taskId}, reloading same URL`);
+      await reloadEmbeddedBrowser({ taskId: opts.taskId });
       return existing;
     }
 
@@ -199,6 +200,30 @@ export async function stopEmbeddedBrowser(opts: { taskId: string }): Promise<voi
   });
 
   activeSessions.delete(opts.taskId);
+}
+
+/**
+ * Reload the current page in the embedded browser.
+ * Used when the agent updates files that are being displayed.
+ */
+export async function reloadEmbeddedBrowser(opts: { taskId: string }): Promise<void> {
+  const session = activeSessions.get(opts.taskId);
+  if (!session?.streaming) {
+    return;
+  }
+
+  const { cdpScreencast } = await loadModules();
+  const screencastSession = cdpScreencast.getScreencastSession({
+    cdpUrl: session.cdpUrl,
+    targetId: session.targetId,
+  });
+
+  if (!screencastSession) {
+    return;
+  }
+
+  console.log(`[embedded-browser] Reloading page for task ${opts.taskId}`);
+  await screencastSession.session.send("Page.reload", {});
 }
 
 /**

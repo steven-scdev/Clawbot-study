@@ -500,10 +500,12 @@ final class TaskService {
         guard let index = self.tasks.firstIndex(where: { $0.id == taskId }) else { return }
         // Coalesce streaming text: the agent sends cumulative text on every
         // token. Update the last text activity in place instead of appending
-        // a new row for each chunk.
+        // a new row for each chunk. Check both type AND id so that text from
+        // different agent runs (different IDs) appears as separate messages.
         if activity.type == .text,
            let last = self.tasks[index].activities.indices.last,
-           self.tasks[index].activities[last].type == .text
+           self.tasks[index].activities[last].type == .text,
+           self.tasks[index].activities[last].id == activity.id
         {
             self.tasks[index].activities[last].message = activity.message
             self.tasks[index].activities[last].timestamp = activity.timestamp
@@ -638,6 +640,12 @@ final class TaskService {
             }
 
         case "workforce.task.completed":
+            // Skip late completion events that arrive after a follow-up set status to .running
+            if let index = self.tasks.firstIndex(where: { $0.id == taskId }),
+               self.tasks[index].status == .running
+            {
+                break
+            }
             self.updateTaskStatus(id: taskId, status: .completed)
             self.stopObserving(taskId: taskId)
 
